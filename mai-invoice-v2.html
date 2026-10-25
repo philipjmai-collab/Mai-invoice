@@ -1,12 +1,96 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mai Invoice V2</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mai Invoice V2</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;margin:0;background:#f3f5f7;color:#222}
+header{background:#173b32;color:white;padding:18px}
+header h1{margin:0;font-size:25px}
+main{max-width:750px;margin:auto;padding:14px}
+.card{background:white;padding:16px;margin:12px 0;border-radius:12px}
+input,select,button{width:100%;padding:12px;margin:5px 0;border:1px solid #ccc;border-radius:7px;font-size:16px}
+button{background:#173b32;color:white;border:0;font-weight:bold}
+.secondary{background:#e8eeeb;color:#173b32}
+.item{border-bottom:1px solid #ddd;padding:10px 0;overflow-wrap:anywhere}
+small{color:#666}
+h2{font-size:19px}
+</style>
 </head>
 <body>
-  <h1>Mai Invoice V2</h1>
-  <p>Development version.</p>
+<header>
+<h1>Mai Invoice</h1>
+<p>Business management</p>
+<select id="language" onchange="renderLanguage()">
+<option value="en">English</option>
+<option value="zh">简体中文</option>
+</select>
+</header>
+<main>
+<section class="card">
+<h2 id="productTitle">Products</h2>
+<form id="productForm">
+<input id="pcode" placeholder="Product code" required>
+<input id="pack" type="number" min="1" placeholder="Pairs per carton" required>
+<input id="price" type="number" min="0" step="0.01" placeholder="Price per pair (R)" required>
+<button id="addProduct">Add product</button>
+</form>
+<div id="products"></div>
+</section>
+
+<section class="card">
+<h2 id="customerTitle">Customers</h2>
+<form id="customerForm">
+<input id="cname" placeholder="Customer name" required>
+<input id="phone" placeholder="Phone number">
+<input id="address" placeholder="Address">
+<input id="opening" type="number" step="0.01" placeholder="Opening balance (R)" value="0" required>
+<button id="addCustomer">Add customer</button>
+</form>
+<div id="customers"></div>
+</section>
+
+<section class="card">
+<h2 id="priceTitle">Customer-specific prices</h2>
+<select id="customerSelect"></select>
+<select id="productSelect"></select>
+<input id="specialPrice" type="number" min="0" step="0.01" placeholder="Customer price per pair (R)">
+<button id="savePrice">Save customer price</button>
+<div id="priceList"></div>
+</section>
+<section class="card">
+<h2>Data backup</h2>
+<button class="secondary" onclick="exportBackup()">Download backup</button>
+<small>Records are stored in this browser. Back up regularly. Clearing browser data may erase them.</small>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const load=(key,def=[])=>{try{return JSON.parse(localStorage.getItem(key))||def}catch{return def}};
+const save=(key,val)=>localStorage.setItem(key,JSON.stringify(val));
+let products=load('mai2_products');
+let customers=load('mai2_customers');
+let prices=load('mai2_prices');
+const money=n=>'R'+Number(n||0).toFixed(2);
+
+function draw(){
+ $('products').innerHTML=products.map((p,i)=>`<div class="item"><b>${esc(p.code)}</b> — ${esc(p.code)}<br><small>${p.pack} pairs/carton · ${money(p.price)}/pair · ${money(p.pack*p.price)}/carton</small><button class="secondary" onclick="deleteProduct(${i})">Delete</button></div>`).join('')||'<small>No products yet.</small>';
+ $('customers').innerHTML=customers.map((c,i)=>`<div class="item"><b>${esc(c.name)}</b><br><small>${esc(c.phone)} · Opening balance: ${money(c.opening)}</small><button class="secondary" onclick="deleteCustomer(${i})">Delete</button></div>`).join('')||'<small>No customers yet.</small>';
+ $('customerSelect').innerHTML=customers.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+ $('productSelect').innerHTML=products.map(p=>`<option value="${esc(p.code)}">${esc(p.code)}</option>`).join('');
+ $('priceList').innerHTML=prices.map(x=>{let c=customers.find(c=>c.id===x.customerId);return c?`<div class="item">${esc(c.name)} · Product ${esc(x.code)}: ${money(x.price)}/pair</div>`:''}).join('');
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+$('productForm').onsubmit=e=>{e.preventDefault();let code=$('pcode').value.trim();if(products.some(p=>p.code===code)){alert('Product code already exists.');return}products.push({code,pack:Number($('pack').value),price:Number($('price').value)});save('mai2_products',products);e.target.reset();draw()};
+$('customerForm').onsubmit=e=>{e.preventDefault();customers.push({id:Date.now().toString(),name:$('cname').value.trim(),phone:$('phone').value.trim(),address:$('address').value.trim(),opening:Number($('opening').value)});save('mai2_customers',customers);e.target.reset();$('opening').value='0';draw()};
+$('savePrice').onclick=()=>{let customerId=$('customerSelect').value,code=$('productSelect').value,price=Number($('specialPrice').value);if(!customerId||!code||$('specialPrice').value===''||price<0){alert('Choose a customer and product and enter a price.');return}let found=prices.find(x=>x.customerId===customerId&&x.code===code);if(found)found.price=price;else prices.push({customerId,code,price});save('mai2_prices',prices);$('specialPrice').value='';draw()};
+function deleteProduct(i){if(confirm('Delete this product?')){products.splice(i,1);save('mai2_products',products);draw()}}
+function deleteCustomer(i){if(confirm('Delete this customer?')){let id=customers[i].id;customers.splice(i,1);prices=prices.filter(p=>p.customerId!==id);save('mai2_customers',customers);save('mai2_prices',prices);draw()}}
+function exportBackup(){let data={products,customers,prices,exportedAt:new Date().toISOString()};let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download='mai-invoice-backup.json';a.click();URL.revokeObjectURL(a.href)}
+function renderLanguage(){let zh=$('language').value==='zh';$('productTitle').textContent=zh?'产品管理':'Products';$('customerTitle').textContent=zh?'客户管理':'Customers';$('priceTitle').textContent=zh?'客户专属价格':'Customer-specific prices';$('addProduct').textContent=zh?'添加产品':'Add product';$('addCustomer').textContent=zh?'添加客户':'Add customer';$('savePrice').textContent=zh?'保存客户价格':'Save customer price';}
+draw();
+</script>
 </body>
 </html>
