@@ -159,8 +159,12 @@ Generate a QR code whose encoded content is compact JSON in exactly this structu
 <input id="opening" type="number" step="0.01" placeholder="Opening balance (R)" value="0" required>
 <button id="addCustomer">Add customer</button>
 </form>
-<label for="searchCustomers">Search customers</label>
-<input id="searchCustomers" type="search" placeholder="Search customer name or phone number">
+<button type="button" class="secondary" id="toggleCustomersList">Hide customers</button>
+<label for="customerSearchSelect">Select customer</label>
+<select id="customerSearchSelect"><option value="">All customers</option></select>
+<label for="searchCustomers">Type to search customers</label>
+<input id="searchCustomers" type="search" placeholder="Type customer name or phone number">
+<p id="customerSearchStatus" aria-live="polite"><small>Choose a customer from the list or type to search.</small></p>
 <div id="customers"></div>
 <div id="customerInvoicesPanel" class="item" hidden></div>
 </section>
@@ -321,17 +325,23 @@ function cancelProductEdit(){
 }
 $('cancelProductEdit').addEventListener('click',cancelProductEdit);
 
-function draw(){
-  const previousPhotoCustomer=$('photoCustomer')?.value||'';
-  if($('photoCustomer')){
-    $('photoCustomer').innerHTML='<option value="">Select customer</option>'+customers.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
-    if(customers.some(c=>String(c.id)===String(previousPhotoCustomer)))$('photoCustomer').value=previousPhotoCustomer;
+function renderCustomersList(){
+  const query=String($('searchCustomers')?.value||'').trim().toLowerCase();
+  const selectedId=String($('customerSearchSelect')?.value||'');
+  const savedHidden=localStorage.getItem('mai2_hideCustomersList')==='1';
+  const matches=customers.filter(c=>{
+    const textMatch=!query||String(c.name||'').toLowerCase().includes(query)||String(c.phone||'').toLowerCase().includes(query);
+    const selectMatch=!selectedId||String(c.id)===selectedId;
+    return textMatch&&selectMatch;
+  });
+  $('customers').hidden=savedHidden&&!query&&!selectedId;
+  $('toggleCustomersList').textContent=savedHidden&&!query&&!selectedId?'Show customers':'Hide customers';
+  if($('customerSearchStatus')){
+    $('customerSearchStatus').innerHTML=query||selectedId
+      ?`<small>${matches.length} matching customer(s) found.</small>`
+      :'<small>Choose a customer from the list or type to search.</small>';
   }
-  renderProductsList();
-
-  const customerQuery=($('searchCustomers')?.value||'').trim().toLowerCase();
-  const visibleCustomers=customers.filter(c=>String(c.name||'').toLowerCase().includes(customerQuery)||String(c.phone||'').toLowerCase().includes(customerQuery));
-  $('customers').innerHTML=visibleCustomers.map((c)=>{
+  $('customers').innerHTML=matches.map((c)=>{
     const balance=customerBalance(c);
     const customerPayments=payments.filter(p=>String(p.customerId)===String(c.id));
     return `<div class="item"><b>${esc(c.name)}</b><br>
@@ -346,6 +356,32 @@ function draw(){
     <details><summary>Payment history (${customerPayments.length})</summary>${customerPayments.slice().reverse().map(p=>`<p>${esc(p.date)} · ${money(p.amount)}${p.reference?' · '+esc(p.reference):''}</p>`).join('')||'<small>No payments recorded.</small>'}</details>
     <button class="danger" type="button" onclick="deleteCustomerById('${esc(c.id)}')">Delete customer</button></div>`;
   }).join('')||(customers.length?'<small>No customers match your search.</small>':'<small>No customers yet.</small>');
+}
+function toggleCustomersList(){
+  const hidden=localStorage.getItem('mai2_hideCustomersList')==='1';
+  localStorage.setItem('mai2_hideCustomersList',hidden?'0':'1');
+  renderCustomersList();
+}
+$('toggleCustomersList').addEventListener('click',toggleCustomersList);
+$('searchCustomers').addEventListener('input',renderCustomersList);
+$('customerSearchSelect').addEventListener('change',()=>{
+  const id=String($('customerSearchSelect').value||'');
+  if(id){const c=customers.find(x=>String(x.id)===id);if(c)$('searchCustomers').value='';}
+  renderCustomersList();
+});
+
+function draw(){
+  const previousPhotoCustomer=$('photoCustomer')?.value||'';
+  if($('photoCustomer')){
+    $('photoCustomer').innerHTML='<option value="">Select customer</option>'+customers.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+    if(customers.some(c=>String(c.id)===String(previousPhotoCustomer)))$('photoCustomer').value=previousPhotoCustomer;
+  }
+  renderProductsList();
+
+  const previousCustomerSearch=String($('customerSearchSelect')?.value||'');
+  $('customerSearchSelect').innerHTML='<option value="">All customers</option>'+customers.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}${c.phone?' — '+esc(c.phone):''}</option>`).join('');
+  if(customers.some(c=>String(c.id)===previousCustomerSearch))$('customerSearchSelect').value=previousCustomerSearch;
+  renderCustomersList();
 
   $('customerSelect').innerHTML=customers.map(c=>
     `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
