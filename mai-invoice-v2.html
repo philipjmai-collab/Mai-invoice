@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -97,13 +96,14 @@ label{display:block;margin-top:10px}
 
 <section class="card" id="stockImportCard">
 <h2>Import Stock Codes from Excel</h2>
-<p>Upload the Mai Invoice Stock Code Import Template (.xlsx) or a CSV with the same three columns. Review the preview before importing. Existing product codes will be skipped and their prices will not be changed.</p>
+<p>Upload the Mai Invoice Stock Code Import Template (.xlsx) or a CSV with the same three columns. Review the preview before importing. Existing product codes can optionally be updated; customer-specific prices will always remain unchanged.</p>
 <label for="stockFile">Excel or CSV file</label>
 <input id="stockFile" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv">
 <button type="button" id="previewStockImport">Preview stock codes</button>
+<label style="display:flex;align-items:flex-start;gap:8px"><input id="overrideExistingProducts" type="checkbox" style="width:auto;margin-top:3px"> <span>Update existing products when the code matches (replace pairs per carton and standard price; keep customer-specific prices unchanged)</span></label>
 <p id="stockImportStatus" class="photo-status" role="status">Choose your completed stock-code template to begin.</p>
 <div id="stockImportPreview"></div>
-<button type="button" id="confirmStockImport" hidden>Import new products</button>
+<button type="button" id="confirmStockImport" hidden>Import products</button>
 </section>
 
 <section class="card">
@@ -922,8 +922,30 @@ $('usePhotoOrder').onclick=()=>{
   $('invoiceFormCard').scrollIntoView({behavior:'smooth',block:'start'});
 };
 
-/* Excel/CSV product catalogue import. Existing product records are never overwritten. */
+/* Excel/CSV product catalogue import. Existing products can be updated by explicit choice; customer-specific prices are never modified. */
 let stockImportRows=[];
+function renderStockImportPreview(){
+  const updateExisting=$('overrideExistingProducts').checked;
+  stockImportRows.forEach(x=>{
+    if(x.existing)x.issue=updateExisting?'Existing product — will update standard price and carton size':'Existing product — will keep unchanged';
+    else if(x.duplicateInFile)x.issue='Duplicate in file — will skip';
+    else if(!x.valid&&(!x.code||!Number.isInteger(x.pack)||x.pack<1||!Number.isFinite(x.price)||x.price<0)){
+      /* Preserve the validation message assigned during file parsing. */
+    }
+  });
+  const newCount=stockImportRows.filter(x=>x.valid&&!x.existing&&!x.duplicateInFile).length;
+  const updateCount=updateExisting?stockImportRows.filter(x=>x.existing).length:0;
+  const invalidCount=stockImportRows.filter(x=>!x.valid&&!x.existing).length;
+  const eligible=newCount+updateCount;
+  $('stockImportStatus').textContent=`Preview: ${stockImportRows.length} row(s); ${newCount} new product(s) ready; ${updateCount} existing product(s) ${updateExisting?'will be updated':'available to update if selected'}; ${invalidCount} invalid or duplicate row(s) will be skipped. Customer-specific prices will not change.`;
+  $('stockImportPreview').innerHTML=`<div style="overflow-x:auto"><table class="import-table"><thead><tr><th>Product code</th><th>Pairs/carton</th><th>Price/pair</th><th>Status</th></tr></thead><tbody>${stockImportRows.map(x=>{
+    const ready=x.valid|| (x.existing&&updateExisting);
+    return `<tr><td>${esc(x.code||'(blank)')}</td><td>${x.pack||''}</td><td>${x.price===undefined?'':money(x.price)}</td><td class="${ready?'import-ok':'import-warn'}">${esc(x.issue)}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
+  $('confirmStockImport').hidden=eligible===0;
+  $('confirmStockImport').textContent=`Import ${newCount} new product(s)${updateCount?` and update ${updateCount} existing product(s)`:''}`;
+}
+$('overrideExistingProducts').addEventListener('change',()=>{if(stockImportRows.length)renderStockImportPreview();});
 $('previewStockImport').onclick=async()=>{
   const file=$('stockFile').files?.[0];
   stockImportRows=[];
@@ -979,22 +1001,17 @@ $('previewStockImport').onclick=async()=>{
       const priceRaw=String(r[priceKey]??'').trim().replace(/^R\s*/i,'').replace(/,/g,'');
       if(!code&&!packRaw&&!priceRaw)return null;
       const pack=Number(packRaw),price=Number(priceRaw);
-      let issue='Ready to import';
+      let issue='Ready to import',existing=false,duplicateInFile=false;
       if(!code||!packRaw||!priceRaw)issue='Missing required value';
       else if(!Number.isInteger(pack)||pack<1)issue='Pairs per carton must be a whole number ≥ 1';
       else if(!Number.isFinite(price)||price<0)issue='Price per pair must be 0 or more';
-      else if(products.some(p=>String(p.code).trim().toLowerCase()===code.toLowerCase()))issue='Already exists — will skip';
-      else if(seen.has(code.toLowerCase()))issue='Duplicate in file — will skip';
+      else if(seen.has(code.toLowerCase())){issue='Duplicate in file — will skip';duplicateInFile=true;}
+      else if(products.some(p=>String(p.code).trim().toLowerCase()===code.toLowerCase())){issue='Existing product — will keep unchanged unless update option is selected';existing=true;}
       if(code)seen.add(code.toLowerCase());
-      return {code,pack,price,issue,valid:issue==='Ready to import'};
+      return {code,pack,price,issue,existing,duplicateInFile,valid:issue==='Ready to import'};
     }).filter(Boolean);
     if(!stockImportRows.length)throw new Error('No product rows with data were found. Remove blank/example rows or fill in the template.');
-    const validCount=stockImportRows.filter(x=>x.valid).length;
-    const skipped=stockImportRows.length-validCount;
-    $('stockImportStatus').textContent=`Preview: ${stockImportRows.length} row(s), ${validCount} new product(s) ready, ${skipped} row(s) needing correction or skipped. Check the example rows in the template and remove them if they are not real products.`;
-    $('stockImportPreview').innerHTML=`<div style="overflow-x:auto"><table class="import-table"><thead><tr><th>Product code</th><th>Pairs/carton</th><th>Price/pair</th><th>Status</th></tr></thead><tbody>${stockImportRows.map(x=>`<tr><td>${esc(x.code||'(blank)')}</td><td>${x.pack||''}</td><td>${x.price===undefined?'':money(x.price)}</td><td class="${x.valid?'import-ok':'import-warn'}">${esc(x.issue)}</td></tr>`).join('')}</tbody></table></div>`;
-    $('confirmStockImport').hidden=validCount===0;
-    $('confirmStockImport').textContent=`Import ${validCount} new product(s)`;
+    renderStockImportPreview();
   }catch(err){
     $('stockImportStatus').textContent=err.message||'Could not read this file.';
     $('stockImportPreview').innerHTML='';
@@ -1002,20 +1019,30 @@ $('previewStockImport').onclick=async()=>{
   }finally{$('previewStockImport').disabled=false;}
 };
 $('confirmStockImport').onclick=()=>{
-  const valid=stockImportRows.filter(x=>x.valid);
-  if(!valid.length){alert('There are no new valid products to import.');return;}
+  const updateExisting=$('overrideExistingProducts').checked;
+  const eligible=stockImportRows.filter(x=>x.valid&&!x.existing&&!x.duplicateInFile || (updateExisting&&x.existing));
+  if(!eligible.length){alert('There are no valid products to import or update.');return;}
   const old=deepCopy(products);
-  const added=[];
-  valid.forEach(x=>{
-    if(products.some(p=>String(p.code).trim().toLowerCase()===x.code.toLowerCase()))return;
-    products.push({code:x.code,pack:x.pack,price:x.price});added.push(x.code);
+  const added=[],updated=[];
+  eligible.forEach(x=>{
+    const existing=products.find(p=>String(p.code).trim().toLowerCase()===x.code.toLowerCase());
+    if(existing){
+      if(!updateExisting)return;
+      existing.pack=x.pack;
+      existing.price=x.price;
+      updated.push(x.code);
+    }else{
+      products.push({code:x.code,pack:x.pack,price:x.price});
+      added.push(x.code);
+    }
   });
   try{save('mai2_products',products);}
   catch(err){products=old;alert('Could not save imported products. Your existing catalogue was restored.');return;}
+  /* Customer-specific prices are stored separately in mai2_prices and intentionally untouched. */
   draw();
   stockImportRows=[];
-  $('stockFile').value='';$('stockImportPreview').innerHTML='';$('confirmStockImport').hidden=true;
-  $('stockImportStatus').textContent=`Import complete: ${added.length} new product(s) added. Existing products and prices were not changed.`;
+  $('stockFile').value='';$('stockImportPreview').innerHTML='';$('confirmStockImport').hidden=true;$('overrideExistingProducts').checked=false;
+  $('stockImportStatus').textContent=`Import complete: ${added.length} new product(s) added; ${updated.length} existing product(s) updated. Customer-specific prices were left unchanged.`;
 };
 
 function exportBackup(){
