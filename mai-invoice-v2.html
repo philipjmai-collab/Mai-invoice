@@ -116,7 +116,8 @@ Generate a QR code whose encoded content is compact JSON in exactly this structu
 </section>
 <section class="card" id="stockImportCard">
 <h2>Import Stock Codes from Excel</h2>
-<p>Upload the Mai Invoice Stock Code Import Template (.xlsx) or a CSV with the same three columns. Review the preview before importing. Existing product codes can optionally be updated; customer-specific prices will always remain unchanged.</p>
+<p>Download the import template first, fill in one shoe product per row in Excel, then upload it here. You can use the downloaded CSV directly in Excel or save it as .xlsx. Review the preview before importing. Existing product codes can optionally be updated; customer-specific prices will always remain unchanged.</p>
+<button type="button" class="secondary" id="downloadStockTemplate">Download stock code template (CSV)</button>
 <label for="stockFile">Excel or CSV file</label>
 <input id="stockFile" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv">
 <button type="button" id="previewStockImport">Preview stock codes</button>
@@ -918,6 +919,15 @@ $('usePhotoOrder').onclick=()=>{
   invoiceDrawItems();
   $('invoiceMessage').textContent='QR order loaded for review. Check all items, then press Save invoice.';
   $('invoiceFormCard').scrollIntoView({behavior:'smooth',block:'start'});
+};
+
+/* Download a blank stock-code import template that matches the importer's required headings. */
+$('downloadStockTemplate').onclick=()=>{
+  const csv='\uFEFFProduct code,Pairs per carton,Price per pair\r\n';
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='Mai-Invoice-Stock-Code-Import-Template.csv';
+  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
 };
 
 /* Excel/CSV product catalogue import. Existing products can be updated by explicit choice; customer-specific prices are never modified. */
