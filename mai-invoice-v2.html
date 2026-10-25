@@ -668,8 +668,10 @@ function viewInvoice(number){
   if(!inv)return;
 
   let html=`<div class="no-print">
-      <button type="button" onclick="printInvoice()">Print / Save PDF</button>
-      <button type="button" class="secondary" onclick="exportInvoiceExcel('${esc(inv.number)}')">Export invoice to Excel</button>
+      <button type="button" onclick="printInvoice('en')">Print / Save PDF — English</button>
+      <button type="button" class="secondary" onclick="printInvoice('zh')">打印 / 保存 PDF — 中文</button>
+      <button type="button" class="secondary" onclick="exportInvoiceExcel('${esc(inv.number)}','en')">Export to Excel — English</button>
+      <button type="button" class="secondary" onclick="exportInvoiceExcel('${esc(inv.number)}','zh')">导出 Excel — 中文</button>
       <p><small>On iPhone, use the print preview's Share option to save or share the PDF.</small></p>
     </div>
     <div id="printableInvoice" class="invoice-paper">
@@ -744,7 +746,7 @@ function viewInvoice(number){
 }
 
 /* Print only the invoice in a separate window. */
-function printInvoice(){
+function printInvoice(language='en'){
   const invoice=$('printableInvoice');
   if(!invoice){
     alert('Open an invoice first.');
@@ -757,6 +759,21 @@ function printInvoice(){
   }
   const invoiceCopy=invoice.cloneNode(true);
   invoiceCopy.querySelectorAll('.no-print').forEach(el=>el.remove());
+  if(language==='zh'){
+    const translations={
+      'Business management':'鞋类批发业务', 'INVOICE':'销售发票',
+      'Invoice number:':'发票号码：','Invoice date:':'发票日期：','Customer:':'客户：',
+      'Phone:':'电话：','Address:':'地址：','Product code':'货号','Cartons':'箱数',
+      'Pairs/carton':'每箱双数','Total pairs':'总双数','Price/pair':'每双单价',
+      'Line total':'金额','Invoice total:':'发票总额：','Thank you for your business.':'感谢您的惠顾。'
+    };
+    invoiceCopy.querySelectorAll('p,h2,th').forEach(el=>{
+      let value=el.textContent;
+      Object.entries(translations).forEach(([en,zh])=>{value=value.replaceAll(en,zh);});
+      if(el.tagName==='P' && value.includes('发票总额：')) value=value.replace('Invoice total:','发票总额：');
+      el.textContent=value;
+    });
+  }
   const printStyles=`
     @page { size: A4 portrait; margin: 12mm; }
     * { box-sizing: border-box; }
@@ -774,9 +791,9 @@ function printInvoice(){
     p { break-inside: avoid; }
   `;
   printWindow.document.open();
-  printWindow.document.write(`<!DOCTYPE html><html lang="en"><head>
+  printWindow.document.write(`<!DOCTYPE html><html lang="${language==='zh'?'zh-CN':'en'}"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Invoice</title><style>${printStyles}</style>
+    <title>${language==='zh'?'销售发票':'Invoice'}</title><style>${printStyles}</style>
     </head><body>${invoiceCopy.outerHTML}</body></html>`);
   printWindow.document.close();
   printWindow.onload=function(){
@@ -788,7 +805,7 @@ function printInvoice(){
 
 /* Export the selected invoice as a CSV file that opens in Excel.
    Export calculated values rather than formulas, so spreadsheet apps display numbers immediately. */
-function exportInvoiceExcel(number){
+function exportInvoiceExcel(number,language='en'){
   const inv=getInvoice(number);
   if(!inv){alert('Invoice not found.');return;}
   const rows=[];
@@ -798,14 +815,15 @@ function exportInvoiceExcel(number){
     return '"'+text.replace(/"/g,'""')+'"';
   };
   const addRow=row=>rows.push(row.map(csvCell).join(','));
+  const zh=language==='zh';
   addRow(['Mai Invoice']);
-  addRow(['Invoice number',inv.number]);
-  addRow(['Invoice date',inv.date]);
-  addRow(['Customer',inv.customer?.name||'']);
-  addRow(['Phone',inv.customer?.phone||'']);
-  addRow(['Address',inv.customer?.address||'']);
+  addRow([zh?'发票号码':'Invoice number',inv.number]);
+  addRow([zh?'发票日期':'Invoice date',inv.date]);
+  addRow([zh?'客户':'Customer',inv.customer?.name||'']);
+  addRow([zh?'电话':'Phone',inv.customer?.phone||'']);
+  addRow([zh?'地址':'Address',inv.customer?.address||'']);
   addRow([]);
-  addRow(['Product code','Cartons','Pairs per carton','Total pairs','Price per pair (R)','Line total (R)']);
+  addRow(zh?['货号','箱数','每箱双数','总双数','每双单价 (R)','金额 (R)']:['Product code','Cartons','Pairs per carton','Total pairs','Price per pair (R)','Line total (R)']);
 
   (inv.items||[]).forEach(item=>{
     const cartons=Number(item.cartons||0);
@@ -816,14 +834,14 @@ function exportInvoiceExcel(number){
     addRow([item.code||'',cartons,pack,totalPairs,price,lineTotal]);
   });
   addRow([]);
-  addRow(['','','','','Invoice total (R)',Number(inv.total||0)]);
+  addRow(['','','','',zh?'发票总额 (R)':'Invoice total (R)',Number(inv.total||0)]);
 
   const csv='\uFEFF'+rows.join('\r\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url;
-  a.download=String(inv.number||'invoice').replace(/[^a-zA-Z0-9_-]/g,'_')+'.csv';
+  a.download=String(inv.number||'invoice').replace(/[^a-zA-Z0-9_-]/g,'_')+(zh?'-中文':'-English')+'.csv';
   document.body.appendChild(a);
   a.click();
   a.remove();
