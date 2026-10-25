@@ -34,6 +34,8 @@ label{display:block;margin-top:10px}
 .photo-preview{max-width:100%;max-height:260px;display:block;margin:10px 0;border-radius:8px}
 .photo-row{border:1px solid #ddd;border-radius:8px;padding:12px;margin:10px 0;background:#fff}
 .photo-row .row-grid{display:grid;grid-template-columns:1fr 110px;gap:8px;align-items:end}
+.photo-review-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.photo-review-actions button{width:auto;flex:1;min-width:130px}
 .photo-row .row-grid label{margin-top:4px}
 .photo-status{font-size:13px;color:#555}
 .import-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
@@ -110,7 +112,7 @@ Generate a QR code whose encoded content is compact JSON in exactly this structu
 <button type="button" id="readOrderQr">Read QR code</button>
 <p id="photoOcrStatus" class="photo-status" role="status">Choose a customer and upload the QR code generated for your order.</p>
 <div id="photoOrderRows"></div>
-<button type="button" id="usePhotoOrder" hidden>Use reviewed items in invoice</button>
+<div class="photo-review-actions"><button type="button" class="secondary" id="addPhotoLine">+ Add line</button><button type="button" id="usePhotoOrder" hidden>Use reviewed items in invoice</button></div>
 </section>
 <section class="card" id="stockImportCard">
 <h2>Import Stock Codes from Excel</h2>
@@ -852,12 +854,10 @@ function renderPhotoCandidates(){
   const customerId=$('photoCustomer').value;
   $('photoOrderRows').innerHTML=photoCandidates.map((item,i)=>{
     const matchedProduct=products.find(p=>String(p.code)===String(item.code));
-    const status=matchedProduct?(item.uncertain?'Check quantity':'Product matched'):'Choose a product code';
-    const options='<option value="">Select product code</option>'+products.map(p=>`<option value="${esc(p.code)}" ${String(p.code)===String(item.code)?'selected':''}>${esc(p.code)}</option>`).join('');
+    const status=matchedProduct?(item.uncertain?'Check quantity':'Product matched'):'Enter an existing product code';
     return `<div class="photo-row" data-photo-row="${i}">
-      <p><b>Detected text:</b> ${esc(item.raw||'(manual line)')}</p>
       <div class="row-grid">
-        <div><label for="photoCode${i}">Product code</label><select id="photoCode${i}">${options}</select></div>
+        <div><label for="photoCode${i}">Product code</label><input id="photoCode${i}" type="text" value="${esc(item.code||'')}" placeholder="Enter stock code" autocomplete="off"></div>
         <div><label for="photoQty${i}">Cartons</label><input id="photoQty${i}" type="number" min="1" step="1" value="${Number(item.cartons)||1}"></div>
       </div>
       <p class="photo-status">${status}${matchedProduct?' · '+matchedProduct.pack+' pairs/carton · '+money(getCustomerPrice(customerId,matchedProduct.code))+'/pair':''}</p>
@@ -866,6 +866,13 @@ function renderPhotoCandidates(){
   }).join('');
   $('usePhotoOrder').hidden=!photoCandidates.length;
 }
+
+$('addPhotoLine').onclick=()=>{
+  photoCandidates.push({code:'',cartons:1,raw:'Manually added line',uncertain:true});
+  renderPhotoCandidates();
+  const field=$('photoCode'+(photoCandidates.length-1));
+  if(field)field.focus();
+};
 
 function getCustomerPrice(customerId,code){
   const special=prices.find(x=>String(x.customerId)===String(customerId)&&String(x.code)===String(code));
@@ -884,11 +891,11 @@ $('usePhotoOrder').onclick=()=>{
   if(!customer){alert('Select a customer first.');return;}
   const items=[];
   for(let i=0;i<photoCandidates.length;i++){
-    const code=$('photoCode'+i)?.value||'';
+    const code=String($('photoCode'+i)?.value||'').trim();
     const qtyRaw=$('photoQty'+i)?.value||'';
     const cartons=Number(qtyRaw);
     const product=products.find(p=>String(p.code)===String(code));
-    if(!product){alert('Please select a valid product code for every line, or remove the line.');return;}
+    if(!product){alert('Please enter a stock code that exists in Products for every line, or remove the line.');return;}
     if(qtyRaw===''||!Number.isInteger(cartons)||cartons<1){alert('Please correct the carton quantity on every line.');return;}
     const price=getCustomerPrice(customerId,code);
     items.push({code:product.code,pack:Number(product.pack),cartons,pricePerPair:price,totalPairs:cartons*Number(product.pack),total:cartons*Number(product.pack)*price});
