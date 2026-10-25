@@ -129,7 +129,7 @@ Generate a QR code whose encoded content is compact JSON in exactly this structu
 
 <section class="card">
 <h2 id="productTitle">Products</h2>
-<button type="button" class="secondary" id="toggleProductsList" onclick="toggleProductsList()">Hide stock codes</button>
+<button type="button" class="secondary" id="toggleProductsList">Hide stock codes</button>
 <label for="stockCodeSearch">Search stock code</label>
 <input id="stockCodeSearch" type="search" placeholder="Type a full or partial stock code, e.g. 6631m">
 <p id="stockCodeSearchStatus" aria-live="polite"><small>Search your product catalogue by stock code.</small></p>
@@ -141,6 +141,7 @@ Generate a QR code whose encoded content is compact JSON in exactly this structu
 <label for="price">Standard price per pair (R)</label>
 <input id="price" type="number" min="0" step="0.01" placeholder="Price per pair (R)" required>
 <button id="addProduct">Add product</button>
+<button type="button" class="secondary" id="cancelProductEdit" hidden>Cancel stock edit</button>
 </form>
 <div id="products"></div>
 </section>
@@ -217,6 +218,7 @@ let prices=load('mai2_prices');
 let invoices=load('mai2_invoices');
 let invoiceItems=[];
 let editingInvoiceNumber=null;
+let editingProductIndex=null;
 
 function esc(s){
   return String(s??'').replace(/[&<>"']/g,c=>({
@@ -241,30 +243,51 @@ function formatTimestamp(t){
 }
 
 function renderProductsList(){
-  const query=($('stockCodeSearch')?.value||'').trim().toLowerCase();
+  const query=String($('stockCodeSearch')?.value||'').trim().toLowerCase();
   const matches=products.map((p,i)=>({p,i})).filter(({p})=>!query||String(p.code||'').toLowerCase().includes(query));
   $('products').innerHTML=matches.map(({p,i})=>
     `<div class="item"><b>${esc(p.code)}</b><br>
-    <small>${p.pack} pairs/carton · ${money(p.price)}/pair · ${money(p.pack*p.price)}/carton</small>
+    <small>${Number(p.pack)} pairs/carton · ${money(p.price)}/pair · ${money(Number(p.pack)*Number(p.price))}/carton</small>
+    <button class="secondary" type="button" onclick="editProduct(${i})">Edit stock information</button>
     <button class="secondary" type="button" onclick="deleteProduct(${i})">Delete</button></div>`
   ).join('')||(query?'<small>No stock codes match your search.</small>':'<small>No products yet.</small>');
+  const savedHidden=localStorage.getItem('mai2_hideProductsList')==='1';
+  // Search always reveals matching rows, even when the catalogue is normally hidden.
+  $('products').hidden=savedHidden&&!query;
+  $('toggleProductsList').textContent=savedHidden&&!query?'Show stock codes':'Hide stock codes';
   if($('stockCodeSearchStatus')){
     $('stockCodeSearchStatus').innerHTML=query
       ?`<small>${matches.length} matching product(s) found.</small>`
       :'<small>Search your product catalogue by stock code.</small>';
   }
-  const savedHidden=localStorage.getItem('mai2_hideProductsList')==='1';
-  /* Searching temporarily reveals matching results, even if the list is normally hidden. */
-  $('products').hidden=savedHidden&&!query;
-  $('toggleProductsList').textContent=savedHidden&&!query?'Show stock codes':'Hide stock codes';
 }
-function applyProductsListVisibility(){renderProductsList();}
 function toggleProductsList(){
   const hidden=localStorage.getItem('mai2_hideProductsList')==='1';
   localStorage.setItem('mai2_hideProductsList',hidden?'0':'1');
-  applyProductsListVisibility();
+  renderProductsList();
 }
+$('toggleProductsList').addEventListener('click',toggleProductsList);
 $('stockCodeSearch').addEventListener('input',renderProductsList);
+
+function editProduct(i){
+  const p=products[i];
+  if(!p)return;
+  editingProductIndex=i;
+  $('pcode').value=p.code;
+  $('pack').value=p.pack;
+  $('price').value=p.price;
+  $('addProduct').textContent='Save stock changes';
+  $('cancelProductEdit').hidden=false;
+  $('pcode').focus();
+  $('productForm').scrollIntoView({behavior:'smooth',block:'center'});
+}
+function cancelProductEdit(){
+  editingProductIndex=null;
+  $('productForm').reset();
+  $('addProduct').textContent='Add product';
+  $('cancelProductEdit').hidden=true;
+}
+$('cancelProductEdit').addEventListener('click',cancelProductEdit);
 
 function draw(){
   const previousPhotoCustomer=$('photoCustomer')?.value||'';
@@ -348,12 +371,24 @@ function createMissingProduct(code, suggestedPrice=null){
 $('productForm').onsubmit=e=>{
   e.preventDefault();
   const code=$('pcode').value.trim();
-  if(products.some(p=>p.code===code)){alert('Product code already exists.');return;}
   const pack=Number($('pack').value),price=Number($('price').value);
+  if(!code){alert('Enter a stock code.');return;}
   if(pack<1||!Number.isInteger(pack)||!Number.isFinite(price)||price<0){alert('Enter a valid carton size and price.');return;}
-  products.push({code,pack,price});
-  try{save('mai2_products',products);}catch(err){products.pop();alert('Could not save product. Browser storage may be full.');return;}
-  e.target.reset();draw();
+  if(products.some((p,i)=>p.code===code&&i!==editingProductIndex)){alert('That product code already exists.');return;}
+  const oldProducts=deepCopy(products),oldPrices=deepCopy(prices);
+  if(editingProductIndex!==null){
+    const oldCode=products[editingProductIndex].code;
+    products[editingProductIndex]={...products[editingProductIndex],code,pack,price};
+    // If the stock code changes, keep customer-specific prices linked to the renamed code.
+    if(String(oldCode)!==String(code))prices.forEach(x=>{if(String(x.code)===String(oldCode))x.code=code;});
+  }else{
+    products.push({code,pack,price});
+  }
+  try{
+    save('mai2_products',products);
+    if(JSON.stringify(oldPrices)!==JSON.stringify(prices))save('mai2_prices',prices);
+  }catch(err){products=oldProducts;prices=oldPrices;alert('Could not save stock information. Browser storage may be full.');return;}
+  cancelProductEdit();draw();
 };
 
 $('customerForm').onsubmit=e=>{
@@ -1104,7 +1139,7 @@ function renderLanguage(){
   $('invoiceTitle').textContent=editingInvoiceNumber
     ?(zh?'编辑发票':'Edit Invoice '+editingInvoiceNumber)
     :(zh?'创建发票':'Create Invoice');
-  $('addProduct').textContent=zh?'添加产品':'Add product';
+  $('addProduct').textContent=editingProductIndex!==null?(zh?'保存产品更改':'Save stock changes'):(zh?'添加产品':'Add product');
   $('addCustomer').textContent=zh?'添加客户':'Add customer';
   $('savePrice').textContent=zh?'保存客户价格':'Save customer price';
   $('addInvoiceItem').textContent=zh?'添加到发票':'Add to invoice';
