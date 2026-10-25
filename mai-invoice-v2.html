@@ -608,7 +608,7 @@ function printInvoice(){
 
 
 /* Export the selected invoice as a CSV file that opens in Excel.
-   Quantity and line-total columns contain formulas so they can be recalculated in Excel. */
+   Export calculated values rather than formulas, so spreadsheet apps display numbers immediately. */
 function exportInvoiceExcel(number){
   const inv=getInvoice(number);
   if(!inv){alert('Invoice not found.');return;}
@@ -627,23 +627,18 @@ function exportInvoiceExcel(number){
   addRow(['Address',inv.customer?.address||'']);
   addRow([]);
   addRow(['Product code','Cartons','Pairs per carton','Total pairs','Price per pair (R)','Line total (R)']);
-  const firstItemRow=rows.length+1;
-  (inv.items||[]).forEach((item,i)=>{
-    const rowNum=firstItemRow+i;
-    addRow([
-      item.code||'',
-      Number(item.cartons||0),
-      Number(item.pack||0),
-      `=B${rowNum}*C${rowNum}`,
-      Number(item.pricePerPair||0),
-      `=D${rowNum}*E${rowNum}`
-    ]);
+
+  (inv.items||[]).forEach(item=>{
+    const cartons=Number(item.cartons||0);
+    const pack=Number(item.pack||0);
+    const totalPairs=Number(item.totalPairs??(cartons*pack));
+    const price=Number(item.pricePerPair||0);
+    const lineTotal=Number(item.total??(totalPairs*price));
+    addRow([item.code||'',cartons,pack,totalPairs,price,lineTotal]);
   });
-  const lastItemRow=firstItemRow+(inv.items||[]).length-1;
   addRow([]);
-  const totalRow=rows.length+1;
-  addRow(['','','','','Invoice total (R)',`=SUM(F${firstItemRow}:F${lastItemRow})`]);
-  addRow(['Saved invoice total (R)',Number(inv.total||0)]);
+  addRow(['','','','','Invoice total (R)',Number(inv.total||0)]);
+
   const csv='\uFEFF'+rows.join('\r\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
