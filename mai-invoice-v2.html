@@ -131,7 +131,53 @@ function deleteCustomer(i){if(confirm('Delete this customer?')){let id=customers
 function exportBackup(){let data={products,customers,prices,exportedAt:new Date().toISOString()};let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download='mai-invoice-backup.json';a.click();URL.revokeObjectURL(a.href)}
 function renderLanguage(){let zh=$('language').value==='zh';$('productTitle').textContent=zh?'产品管理':'Products';$('customerTitle').textContent=zh?'客户管理':'Customers';$('priceTitle').textContent=zh?'客户专属价格':'Customer-specific prices';$('addProduct').textContent=zh?'添加产品':'Add product';$('addCustomer').textContent=zh?'添加客户':'Add customer';$('savePrice').textContent=zh?'保存客户价格':'Save customer price';}
 draw();
- 
+const invoices=load('mai2_invoices',[]);
+let invoiceItems=[];
+function invoiceRefresh(){
+  $('invoiceCustomer').innerHTML='<option value="">Select customer</option>'+customers.map((c,i)=>'<option value="'+i+'">'+esc(c.name)+'</option>').join('');
+  $('invoiceProduct').innerHTML='<option value="">Select product</option>'+products.map((p,i)=>'<option value="'+i+'">'+esc(p.code)+'</option>').join('');
+  if(!$('invoiceDate').value)$('invoiceDate').value=new Date().toISOString().slice(0,10);
+}
+function invoiceCustomerPrice(){
+  const ci=$('invoiceCustomer').value;
+  const pi=$('invoiceProduct').value;
+  if(ci===''||pi==='')return;
+  const c=customers[Number(ci)],p=products[Number(pi)];
+  const saved=prices.find(x=>String(x.customerId)===String(c.id)&&String(x.productId)===String(p.id));
+  $('invoicePrice').value=saved?saved.price:p.price;
+}
+$('invoiceCustomer').addEventListener('change',invoiceCustomerPrice);
+$('invoiceProduct').addEventListener('change',invoiceCustomerPrice);
+$('addInvoiceItem').onclick=()=>{
+  const pi=$('invoiceProduct').value;
+  const qty=Number($('invoiceQty').value);
+  const price=Number($('invoicePrice').value);
+  if(pi===''||qty<1||!Number.isFinite(price)||price<0){alert('Select a product and enter a valid quantity and price.');return;}
+  const p=products[Number(pi)];
+  const pairs=Number(p.pack)||0;
+  invoiceItems.push({code:p.code,pack:pairs,cartons:qty,pricePerPair:price,totalPairs:qty*pairs,total:qty*pairs*price});
+  invoiceDrawItems();
+};
+function invoiceDrawItems(){
+  $('invoiceItems').innerHTML=invoiceItems.length?invoiceItems.map((x,i)=>'<div class="item">'+esc(x.code)+' — '+x.cartons+' cartons × '+x.pack+' pairs; '+money(x.total)+' <button type="button" onclick="invoiceRemoveItem('+i+')">Remove</button></div>').join(''):'<p>No products added yet.</p>';
+  $('invoiceTotal').textContent=money(invoiceItems.reduce((s,x)=>s+x.total,0));
+}
+function invoiceRemoveItem(i){invoiceItems.splice(i,1);invoiceDrawItems();}
+$('saveInvoice').onclick=()=>{
+  const ci=$('invoiceCustomer').value;
+  if(ci===''||invoiceItems.length===0){alert('Select a customer and add at least one product.');return;}
+  const number='INV-'+String(Number(localStorage.getItem('mai2_nextInvoice')||1)).padStart(6,'0');
+  const customer=customers[Number(ci)];
+  const inv={number,date:$('invoiceDate').value,customer:{...customer},items:invoiceItems.map(x=>({...x})),total:invoiceItems.reduce((s,x)=>s+x.total,0),createdAt:new Date().toISOString()};
+  invoices.push(inv);
+  save('mai2_invoices',invoices);
+  localStorage.setItem('mai2_nextInvoice',String(Number(localStorage.getItem('mai2_nextInvoice')||1)+1));
+  $('invoiceNumber').textContent=number;
+  $('invoiceMessage').textContent='Invoice '+number+' saved. Total: '+money(inv.total);
+  invoiceItems=[];
+  invoiceDrawItems();
+};
+invoiceRefresh(); 
 </script>
 </body>
 </html>
