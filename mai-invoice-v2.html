@@ -624,8 +624,34 @@ function drawSavedInvoices(){
       Total: ${money(inv.total)}
       <button type="button" onclick="viewInvoice('${esc(inv.number)}')">View invoice</button>
       <button type="button" class="secondary" onclick="editInvoice('${esc(inv.number)}')">Edit invoice</button>
+      <button type="button" class="danger" onclick="deleteInvoice('${esc(inv.number)}')">Delete invoice</button>
     </div>`
   ).join('')||'<small>No matching invoices found.</small>';
+}
+
+function deleteInvoice(number){
+  const index=invoices.findIndex(inv=>String(inv.number)===String(number));
+  if(index<0){alert('Invoice not found.');return;}
+  const inv=invoices[index];
+  const customer=inv.customer?.name||'this customer';
+  if(!confirm(`Delete invoice ${inv.number} for ${customer}? This cannot be undone. Export or back up your data first if you may need this invoice later.`))return;
+  const removed=invoices.splice(index,1)[0];
+  try{
+    save('mai2_invoices',invoices);
+  }catch(err){
+    invoices.splice(index,0,removed);
+    alert('The invoice could not be deleted. Your saved invoices have been restored.');
+    return;
+  }
+  if($('invoiceDetail').dataset.invoiceNumber===String(number)){
+    $('invoiceDetail').innerHTML='<small>Invoice deleted. Select View invoice from the saved invoice list.</small>';
+    delete $('invoiceDetail').dataset.invoiceNumber;
+  }
+  if(editingInvoiceNumber===String(number)||editingInvoiceNumber===number){
+    resetInvoiceForm();
+  }
+  drawSavedInvoices();
+  $('invoiceMessage').textContent=`Invoice ${number} deleted.`;
 }
 
 function clearInvoiceSearch(){
@@ -713,6 +739,7 @@ function viewInvoice(number){
   }
 
   $('invoiceDetail').innerHTML=html;
+  $('invoiceDetail').dataset.invoiceNumber=String(inv.number);
   $('invoiceDetail').scrollIntoView({behavior:'smooth',block:'start'});
 }
 
