@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mai Invoice V16</title>
+<title>Mai Invoice V20</title>
 <style>
 *{box-sizing:border-box}
 body{font-family:Arial,sans-serif;margin:0;background:#f3f5f7;color:#222}
@@ -216,6 +216,7 @@ let products=load('mai2_products');
 let customers=load('mai2_customers');
 let prices=load('mai2_prices');
 let invoices=load('mai2_invoices');
+let payments=load('mai2_payments');
 let invoiceItems=[];
 let editingInvoiceNumber=null;
 let editingProductIndex=null;
@@ -227,6 +228,34 @@ function esc(s){
 }
 function deepCopy(v){return JSON.parse(JSON.stringify(v));}
 function getInvoice(n){return invoices.find(x=>String(x.number)===String(n));}
+function customerBalance(customerOrId){
+  const customer=typeof customerOrId==='object'?customerOrId:customers.find(c=>String(c.id)===String(customerOrId));
+  if(!customer)return 0;
+  const id=String(customer.id);
+  const opening=Number(customer.opening||0);
+  const billed=invoices.filter(inv=>String(inv.customer?.id)===id).reduce((sum,inv)=>sum+Number(inv.total||0),0);
+  const paid=payments.filter(p=>String(p.customerId)===id).reduce((sum,p)=>sum+Number(p.amount||0),0);
+  return opening+billed-paid;
+}
+function recordCustomerPayment(customerId){
+  const customer=customers.find(c=>String(c.id)===String(customerId));
+  if(!customer)return;
+  const raw=prompt('Enter payment amount in Rands (R):');
+  if(raw===null)return;
+  const amount=Number(raw);
+  if(raw.trim()===''||!Number.isFinite(amount)||amount<=0){alert('Enter a valid payment amount greater than zero.');return;}
+  const date=prompt('Payment date (YYYY-MM-DD):',new Date().toISOString().slice(0,10));
+  if(date===null)return;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){alert('Enter the date in YYYY-MM-DD format.');return;}
+  const reference=prompt('Payment reference (optional):','')||'';
+  const payment={id:Date.now().toString(),customerId:String(customer.id),amount,date,reference:reference.trim(),createdAt:new Date().toISOString()};
+  payments.push(payment);
+  try{save('mai2_payments',payments);}catch(e){payments.pop();alert('Could not save payment. Browser storage may be full.');return;}
+  draw();
+  const detail=$('invoiceDetail').dataset.invoiceNumber;
+  if(detail)viewInvoice(detail);
+  alert('Payment recorded. Current customer balance: '+money(customerBalance(customer)));
+}
 function invoiceSnapshot(inv){
   return {
     number:inv.number,date:inv.date,
@@ -297,11 +326,15 @@ function draw(){
   }
   renderProductsList();
 
-  $('customers').innerHTML=customers.map((c,i)=>
-    `<div class="item"><b>${esc(c.name)}</b><br>
-    <small>${esc(c.phone)} · Opening balance: ${money(c.opening)}</small>
-    <button class="secondary" type="button" onclick="deleteCustomer(${i})">Delete</button></div>`
-  ).join('')||'<small>No customers yet.</small>';
+  $('customers').innerHTML=customers.map((c,i)=>{
+    const balance=customerBalance(c);
+    const customerPayments=payments.filter(p=>String(p.customerId)===String(c.id));
+    return `<div class="item"><b>${esc(c.name)}</b><br>
+    <small>${esc(c.phone)} · Opening balance: ${money(c.opening)} · <b>Current balance: ${money(balance)}</b></small><br>
+    <button type="button" onclick="recordCustomerPayment('${esc(c.id)}')">Record payment</button>
+    <details><summary>Payment history (${customerPayments.length})</summary>${customerPayments.slice().reverse().map(p=>`<p>${esc(p.date)} · ${money(p.amount)}${p.reference?' · '+esc(p.reference):''}</p>`).join('')||'<small>No payments recorded.</small>'}</details>
+    <button class="secondary" type="button" onclick="deleteCustomer(${i})">Delete</button></div>`;
+  }).join('')||'<small>No customers yet.</small>';
 
   $('customerSelect').innerHTML=customers.map(c=>
     `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
@@ -686,6 +719,7 @@ function viewInvoice(number){
       <p><b>Customer:</b> ${esc(inv.customer?.name||'')}</p>
       <p><b>Phone:</b> ${esc(inv.customer?.phone||'')}</p>
       <p><b>Address:</b> ${esc(inv.customer?.address||'')}</p>
+      <p><b>Current customer balance:</b> ${money(customerBalance(inv.customer||{}))}</p>
     </div>
     <table>
       <thead><tr>
@@ -763,7 +797,7 @@ function printInvoice(language='en'){
     const translations={
       'Business management':'鞋类批发业务', 'INVOICE':'销售发票',
       'Invoice number:':'发票号码：','Invoice date:':'发票日期：','Customer:':'客户：',
-      'Phone:':'电话：','Address:':'地址：','Product code':'货号','Cartons':'箱数',
+      'Phone:':'电话：','Address:':'地址：','Current customer balance:':'客户当前余额：','Product code':'货号','Cartons':'箱数',
       'Pairs/carton':'每箱双数','Total pairs':'总双数','Price/pair':'每双单价',
       'Line total':'金额','Invoice total:':'发票总额：','Thank you for your business.':'感谢您的惠顾。'
     };
@@ -822,6 +856,7 @@ function exportInvoiceExcel(number,language='en'){
   addRow([zh?'客户':'Customer',inv.customer?.name||'']);
   addRow([zh?'电话':'Phone',inv.customer?.phone||'']);
   addRow([zh?'地址':'Address',inv.customer?.address||'']);
+  addRow([zh?'客户当前余额 (R)':'Current customer balance (R)',customerBalance(inv.customer||{})]);
   addRow([]);
   addRow(zh?['货号','箱数','每箱双数','总双数','每双单价 (R)','金额 (R)']:['Product code','Cartons','Pairs per carton','Total pairs','Price per pair (R)','Line total (R)']);
 
@@ -1164,7 +1199,7 @@ $('confirmStockImport').onclick=()=>{
 
 function exportBackup(){
   const data={
-    products,customers,prices,invoices,
+    products,customers,prices,invoices,payments,
     nextInvoice:localStorage.getItem('mai2_nextInvoice')||'1',
     exportedAt:new Date().toISOString()
   };
