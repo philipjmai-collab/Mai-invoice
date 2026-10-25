@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,7 +13,7 @@ header h1{margin:0;font-size:25px}
 main{max-width:750px;margin:auto;padding:14px}
 .card{background:white;padding:16px;margin:12px 0;border-radius:12px}
 input,select,button{width:100%;padding:12px;margin:5px 0;border:1px solid #ccc;border-radius:7px;font-size:16px}
-button{background:#173b32;color:white;border:0;font-weight:bold}
+button{background:#173b32;color:white;border:0;font-weight:bold;cursor:pointer}
 .secondary{background:#e8eeeb;color:#173b32}
 .item{border-bottom:1px solid #ddd;padding:10px 0;overflow-wrap:anywhere}
 small{color:#666}
@@ -21,10 +22,47 @@ label{display:block;margin-top:10px}
 .total{font-size:20px;font-weight:bold}
 .history-entry{background:#f3f5f7;padding:12px;border-radius:8px;margin:10px 0}
 .status{font-weight:bold;color:#173b32}
+.invoice-paper{background:white;color:#111}
+.invoice-paper h2{font-size:24px}
+.invoice-paper table{width:100%;border-collapse:collapse;margin-top:15px}
+.invoice-paper th,.invoice-paper td{border-bottom:1px solid #ccc;padding:8px 4px;text-align:left}
+.invoice-paper .amount{text-align:right}
+.invoice-paper .invoice-total{text-align:right;font-size:20px;font-weight:bold;margin-top:20px}
+.print-business{margin-bottom:20px}
+.print-meta p{margin:6px 0}
+.no-print{}
+@media print{
+  @page{size:auto;margin:12mm}
+  body{background:white!important;color:black!important;margin:0!important}
+  body *{visibility:hidden!important}
+  #printableInvoice,#printableInvoice *{visibility:visible!important}
+  #printableInvoice{
+    display:block!important;
+    position:absolute!important;
+    left:0!important;
+    top:0!important;
+    width:100%!important;
+    margin:0!important;
+    padding:0!important;
+    border:0!important;
+    box-shadow:none!important;
+    background:white!important;
+    color:black!important;
+  }
+  #printableInvoice table{width:100%;border-collapse:collapse}
+  #printableInvoice th,#printableInvoice td{
+    border-bottom:1px solid #aaa;
+    padding:7px 4px;
+    font-size:11pt;
+  }
+  #printableInvoice h2{font-size:22pt}
+  #printableInvoice .no-print{display:none!important}
+  #printableInvoice .invoice-total{margin-top:20px}
+  .invoice-paper{border:0!important;border-radius:0!important}
+}
 </style>
 </head>
 <body>
-
 <header>
 <h1>Mai Invoice</h1>
 <p>Business management</p>
@@ -38,35 +76,23 @@ label{display:block;margin-top:10px}
 <main>
 <section class="card" id="invoiceFormCard">
 <h2 id="invoiceTitle">Create Invoice</h2>
-
-<p id="editingNotice" class="status" hidden>
-You are editing an existing invoice. Its invoice number will not change.
-</p>
-
+<p id="editingNotice" class="status" hidden>You are editing an existing invoice. Its invoice number will not change.</p>
 <label for="invoiceCustomer">Customer</label>
 <select id="invoiceCustomer"><option value="">Select customer</option></select>
-
 <label for="invoiceDate">Invoice date</label>
 <input type="date" id="invoiceDate">
-
 <p>Invoice number: <b id="invoiceNumber">Assigned when saved</b></p>
 <hr>
-
 <h3>Add product</h3>
 <label for="invoiceProduct">Product code</label>
 <select id="invoiceProduct"><option value="">Select product</option></select>
-
 <label for="invoiceQty">Number of cartons</label>
 <input type="number" id="invoiceQty" min="1" step="1" value="1">
-
 <label for="invoicePrice">Price per pair (R)</label>
 <input type="number" id="invoicePrice" min="0" step="0.01">
-
 <p><small>Customer-specific prices are applied automatically when selecting a product.</small></p>
-
 <button type="button" id="addInvoiceItem">Add to invoice</button>
 <div id="invoiceItems"><p>No products added yet.</p></div>
-
 <p class="total">Invoice total: <span id="invoiceTotal">R0.00</span></p>
 <button type="button" id="saveInvoice">Save invoice</button>
 <button type="button" class="secondary" id="cancelEdit" onclick="cancelInvoiceEdit()" hidden>Cancel editing</button>
@@ -142,16 +168,12 @@ You are editing an existing invoice. Its invoice number will not change.
 
 <script>
 const $=id=>document.getElementById(id);
-
 const load=(key,def=[])=>{
   try{
     const value=JSON.parse(localStorage.getItem(key));
     return value===null?def:value;
-  }catch(e){
-    return def;
-  }
+  }catch(e){return def;}
 };
-
 const save=(key,val)=>localStorage.setItem(key,JSON.stringify(val));
 const money=n=>'R'+Number(n||0).toFixed(2);
 
@@ -164,63 +186,43 @@ let editingInvoiceNumber=null;
 
 function esc(s){
   return String(s??'').replace(/[&<>"']/g,c=>({
-    '&':'&amp;',
-    '<':'&lt;',
-    '>':'&gt;',
-    '"':'&quot;',
-    "'":'&#39;'
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
   }[c]));
 }
-
-function deepCopy(value){
-  return JSON.parse(JSON.stringify(value));
-}
-
-function getInvoice(number){
-  return invoices.find(inv=>String(inv.number)===String(number));
-}
-
+function deepCopy(v){return JSON.parse(JSON.stringify(v));}
+function getInvoice(n){return invoices.find(x=>String(x.number)===String(n));}
 function invoiceSnapshot(inv){
   return {
-    number:inv.number,
-    date:inv.date,
+    number:inv.number,date:inv.date,
     customer:deepCopy(inv.customer||{}),
     items:deepCopy(inv.items||[]),
     total:Number(inv.total||0),
     createdAt:inv.createdAt||null
   };
 }
-
-function formatTimestamp(timestamp){
-  if(!timestamp)return 'Unknown time';
-  const d=new Date(timestamp);
-  return Number.isNaN(d.getTime())?String(timestamp):d.toLocaleString();
+function formatTimestamp(t){
+  if(!t)return 'Unknown time';
+  const d=new Date(t);
+  return Number.isNaN(d.getTime())?String(t):d.toLocaleString();
 }
 
 function draw(){
   $('products').innerHTML=products.map((p,i)=>
-    `<div class="item">
-      <b>${esc(p.code)}</b><br>
-      <small>${p.pack} pairs/carton · ${money(p.price)}/pair · ${money(p.pack*p.price)}/carton</small>
-      <button class="secondary" type="button" onclick="deleteProduct(${i})">Delete</button>
-    </div>`
+    `<div class="item"><b>${esc(p.code)}</b><br>
+    <small>${p.pack} pairs/carton · ${money(p.price)}/pair · ${money(p.pack*p.price)}/carton</small>
+    <button class="secondary" type="button" onclick="deleteProduct(${i})">Delete</button></div>`
   ).join('')||'<small>No products yet.</small>';
 
   $('customers').innerHTML=customers.map((c,i)=>
-    `<div class="item">
-      <b>${esc(c.name)}</b><br>
-      <small>${esc(c.phone)} · Opening balance: ${money(c.opening)}</small>
-      <button class="secondary" type="button" onclick="deleteCustomer(${i})">Delete</button>
-    </div>`
+    `<div class="item"><b>${esc(c.name)}</b><br>
+    <small>${esc(c.phone)} · Opening balance: ${money(c.opening)}</small>
+    <button class="secondary" type="button" onclick="deleteCustomer(${i})">Delete</button></div>`
   ).join('')||'<small>No customers yet.</small>';
 
   $('customerSelect').innerHTML=customers.map(c=>
-    `<option value="${esc(c.id)}">${esc(c.name)}</option>`
-  ).join('');
-
+    `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
   $('productSelect').innerHTML=products.map(p=>
-    `<option value="${esc(p.code)}">${esc(p.code)}</option>`
-  ).join('');
+    `<option value="${esc(p.code)}">${esc(p.code)}</option>`).join('');
 
   $('priceList').innerHTML=prices.map(x=>{
     const c=customers.find(c=>String(c.id)===String(x.customerId));
@@ -234,538 +236,265 @@ function draw(){
 function refreshInvoiceChoices(){
   const oldCustomer=$('invoiceCustomer').value;
   const oldProduct=$('invoiceProduct').value;
-
   $('invoiceCustomer').innerHTML='<option value="">Select customer</option>'+
     customers.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
-
   $('invoiceProduct').innerHTML='<option value="">Select product</option>'+
     products.map(p=>`<option value="${esc(p.code)}">${esc(p.code)}</option>`).join('');
 
-  if(customers.some(c=>String(c.id)===String(oldCustomer))){
-    $('invoiceCustomer').value=oldCustomer;
-  }
-
-  if(products.some(p=>p.code===oldProduct)){
-    $('invoiceProduct').value=oldProduct;
-  }
-
+  if(customers.some(c=>String(c.id)===String(oldCustomer)))$('invoiceCustomer').value=oldCustomer;
+  if(products.some(p=>p.code===oldProduct))$('invoiceProduct').value=oldProduct;
   if(!editingInvoiceNumber)updateInvoicePrice();
 
   if(!$('invoiceDate').value){
     const d=new Date();
-    $('invoiceDate').value=[
-      d.getFullYear(),
-      String(d.getMonth()+1).padStart(2,'0'),
-      String(d.getDate()).padStart(2,'0')
-    ].join('-');
+    $('invoiceDate').value=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
   }
 }
 
 function updateInvoicePrice(){
   const customerId=$('invoiceCustomer').value;
   const code=$('invoiceProduct').value;
-
-  if(!customerId||!code){
-    $('invoicePrice').value='';
-    return;
-  }
-
-  const product=products.find(p=>p.code===code);
-  if(!product)return;
-
-  const special=prices.find(x=>
-    String(x.customerId)===String(customerId)&&String(x.code)===String(code)
-  );
-
-  $('invoicePrice').value=special?special.price:product.price;
+  if(!customerId||!code){$('invoicePrice').value='';return;}
+  const p=products.find(x=>x.code===code);
+  if(!p)return;
+  const special=prices.find(x=>String(x.customerId)===String(customerId)&&String(x.code)===String(code));
+  $('invoicePrice').value=special?special.price:p.price;
 }
-
-$('invoiceCustomer').addEventListener('change',()=>{
-  if(!editingInvoiceNumber)updateInvoicePrice();
-});
+$('invoiceCustomer').addEventListener('change',()=>{if(!editingInvoiceNumber)updateInvoicePrice();});
 $('invoiceProduct').addEventListener('change',updateInvoicePrice);
 
 $('productForm').onsubmit=e=>{
   e.preventDefault();
   const code=$('pcode').value.trim();
-
-  if(products.some(p=>p.code===code)){
-    alert('Product code already exists.');
-    return;
-  }
-
-  const pack=Number($('pack').value);
-  const price=Number($('price').value);
-
-  if(pack<1||!Number.isInteger(pack)||!Number.isFinite(price)||price<0){
-    alert('Enter a valid carton size and price.');
-    return;
-  }
-
+  if(products.some(p=>p.code===code)){alert('Product code already exists.');return;}
+  const pack=Number($('pack').value),price=Number($('price').value);
+  if(pack<1||!Number.isInteger(pack)||!Number.isFinite(price)||price<0){alert('Enter a valid carton size and price.');return;}
   products.push({code,pack,price});
-
-  try{
-    save('mai2_products',products);
-  }catch(err){
-    products.pop();
-    alert('Could not save the product. Browser storage may be full.');
-    return;
-  }
-
-  e.target.reset();
-  draw();
+  try{save('mai2_products',products);}catch(err){products.pop();alert('Could not save product. Browser storage may be full.');return;}
+  e.target.reset();draw();
 };
 
 $('customerForm').onsubmit=e=>{
   e.preventDefault();
-
-  const customer={
+  customers.push({
     id:Date.now().toString(),
     name:$('cname').value.trim(),
     phone:$('phone').value.trim(),
     address:$('address').value.trim(),
     opening:Number($('opening').value)
-  };
-
-  customers.push(customer);
-
-  try{
-    save('mai2_customers',customers);
-  }catch(err){
-    customers.pop();
-    alert('Could not save the customer. Browser storage may be full.');
-    return;
-  }
-
-  e.target.reset();
-  $('opening').value='0';
-  draw();
+  });
+  try{save('mai2_customers',customers);}catch(err){customers.pop();alert('Could not save customer. Browser storage may be full.');return;}
+  e.target.reset();$('opening').value='0';draw();
 };
 
 $('savePrice').onclick=()=>{
-  const customerId=$('customerSelect').value;
-  const code=$('productSelect').value;
-  const raw=$('specialPrice').value;
-  const price=Number(raw);
-
-  if(!customerId||!code||raw===''||!Number.isFinite(price)||price<0){
-    alert('Choose a customer and product and enter a valid price.');
-    return;
-  }
-
-  const oldPrices=deepCopy(prices);
-  const found=prices.find(x=>
-    String(x.customerId)===String(customerId)&&String(x.code)===String(code)
-  );
-
-  if(found)found.price=price;
-  else prices.push({customerId,code,price});
-
-  try{
-    save('mai2_prices',prices);
-  }catch(err){
-    prices=oldPrices;
-    alert('Could not save the price. Browser storage may be full.');
-    return;
-  }
-
-  $('specialPrice').value='';
-  draw();
+  const customerId=$('customerSelect').value,code=$('productSelect').value;
+  const raw=$('specialPrice').value,price=Number(raw);
+  if(!customerId||!code||raw===''||!Number.isFinite(price)||price<0){alert('Choose a customer and product and enter a valid price.');return;}
+  const old=deepCopy(prices);
+  const found=prices.find(x=>String(x.customerId)===String(customerId)&&String(x.code)===String(code));
+  if(found)found.price=price;else prices.push({customerId,code,price});
+  try{save('mai2_prices',prices);}catch(err){prices=old;alert('Could not save price.');return;}
+  $('specialPrice').value='';draw();
 };
 
 function deleteProduct(i){
   if(!confirm('Delete this product?'))return;
-
-  const oldProducts=deepCopy(products);
-  products.splice(i,1);
-
-  try{
-    save('mai2_products',products);
-    draw();
-  }catch(err){
-    products=oldProducts;
-    alert('Could not delete the product. Browser storage may be full.');
-  }
+  const old=deepCopy(products);products.splice(i,1);
+  try{save('mai2_products',products);draw();}catch(e){products=old;alert('Could not delete product.');}
 }
-
 function deleteCustomer(i){
   if(!confirm('Delete this customer?'))return;
-
-  const oldCustomers=deepCopy(customers);
-  const oldPrices=deepCopy(prices);
-  const id=customers[i].id;
-
-  customers.splice(i,1);
-  prices=prices.filter(p=>String(p.customerId)!==String(id));
-
-  try{
-    save('mai2_customers',customers);
-    save('mai2_prices',prices);
-    draw();
-  }catch(err){
-    customers=oldCustomers;
-    prices=oldPrices;
-    alert('Could not delete the customer. Browser storage may be full.');
-  }
+  const oldC=deepCopy(customers),oldP=deepCopy(prices),id=customers[i].id;
+  customers.splice(i,1);prices=prices.filter(p=>String(p.customerId)!==String(id));
+  try{save('mai2_customers',customers);save('mai2_prices',prices);draw();}
+  catch(e){customers=oldC;prices=oldP;alert('Could not delete customer.');}
 }
 
-/* Add a product to a new invoice or to an invoice being edited. */
 $('addInvoiceItem').onclick=()=>{
-  const code=$('invoiceProduct').value;
-  const qty=Number($('invoiceQty').value);
-  const rawPrice=$('invoicePrice').value;
-  const price=Number(rawPrice);
-  const product=products.find(p=>p.code===code);
-
-  if(!product||!Number.isInteger(qty)||qty<1||rawPrice===''||
-     !Number.isFinite(price)||price<0){
-    alert('Select a product and enter a valid carton quantity and price.');
-    return;
+  const code=$('invoiceProduct').value,qty=Number($('invoiceQty').value);
+  const raw=$('invoicePrice').value,price=Number(raw);
+  const p=products.find(x=>x.code===code);
+  if(!p||!Number.isInteger(qty)||qty<1||raw===''||!Number.isFinite(price)||price<0){
+    alert('Select a product and enter a valid carton quantity and price.');return;
   }
-
   invoiceItems.push({
-    code:product.code,
-    pack:Number(product.pack),
-    cartons:qty,
-    pricePerPair:price,
-    totalPairs:qty*Number(product.pack),
-    total:qty*Number(product.pack)*price
+    code:p.code,pack:Number(p.pack),cartons:qty,pricePerPair:price,
+    totalPairs:qty*Number(p.pack),total:qty*Number(p.pack)*price
   });
-
   invoiceDrawItems();
 };
 
-/*
- * Each invoice item now has editable carton size, carton quantity,
- * and price fields. Press Update item to apply those values.
- */
 function invoiceDrawItems(){
   $('invoiceItems').innerHTML=invoiceItems.map((x,i)=>
     `<div class="item">
       <b>Product ${esc(x.code)}</b>
-
       <label for="editPack${i}">Pairs per carton</label>
       <input type="number" min="1" step="1" id="editPack${i}" value="${Number(x.pack)}">
-
       <label for="editCartons${i}">Number of cartons</label>
       <input type="number" min="1" step="1" id="editCartons${i}" value="${Number(x.cartons)}">
-
       <label for="editPrice${i}">Price per pair (R)</label>
       <input type="number" min="0" step="0.01" id="editPrice${i}" value="${Number(x.pricePerPair)}">
-
       <p>Total pairs: ${Number(x.totalPairs)}</p>
       <p>Line total: <b>${money(x.total)}</b></p>
-
       <button type="button" onclick="updateInvoiceItem(${i})">Update item</button>
       <button type="button" class="secondary" onclick="removeInvoiceItem(${i})">Remove item</button>
     </div>`
   ).join('')||'<p>No products added yet.</p>';
-
-  $('invoiceTotal').textContent=money(
-    invoiceItems.reduce((s,x)=>s+Number(x.total||0),0)
-  );
+  $('invoiceTotal').textContent=money(invoiceItems.reduce((s,x)=>s+Number(x.total||0),0));
 }
 
 function updateInvoiceItem(i){
   if(!invoiceItems[i])return;
-
-  const packRaw=$('editPack'+i).value;
-  const cartonsRaw=$('editCartons'+i).value;
-  const priceRaw=$('editPrice'+i).value;
-
-  const pack=Number(packRaw);
-  const cartons=Number(cartonsRaw);
-  const price=Number(priceRaw);
-
-  if(packRaw===''||!Number.isInteger(pack)||pack<1||
-     cartonsRaw===''||!Number.isInteger(cartons)||cartons<1||
-     priceRaw===''||!Number.isFinite(price)||price<0){
-    alert('Enter a valid pairs-per-carton value, carton quantity and price.');
-    return;
+  const pr=$('editPack'+i).value,cr=$('editCartons'+i).value,rr=$('editPrice'+i).value;
+  const pack=Number(pr),cartons=Number(cr),price=Number(rr);
+  if(pr===''||!Number.isInteger(pack)||pack<1||cr===''||!Number.isInteger(cartons)||cartons<1||rr===''||!Number.isFinite(price)||price<0){
+    alert('Enter a valid pairs-per-carton value, carton quantity and price.');return;
   }
-
-  invoiceItems[i].pack=pack;
-  invoiceItems[i].cartons=cartons;
-  invoiceItems[i].pricePerPair=price;
-  invoiceItems[i].totalPairs=pack*cartons;
-  invoiceItems[i].total=pack*cartons*price;
-
+  Object.assign(invoiceItems[i],{
+    pack,cartons,pricePerPair:price,
+    totalPairs:pack*cartons,total:pack*cartons*price
+  });
   invoiceDrawItems();
-
-  $('invoiceMessage').textContent=
-    'Item updated. Press Save changes to save the invoice.';
+  $('invoiceMessage').textContent='Item updated. Press Save changes to save the invoice.';
 }
-
-function removeInvoiceItem(i){
-  invoiceItems.splice(i,1);
-  invoiceDrawItems();
-}
+function removeInvoiceItem(i){invoiceItems.splice(i,1);invoiceDrawItems();}
 
 function resetInvoiceForm(){
-  editingInvoiceNumber=null;
-  invoiceItems=[];
-
+  editingInvoiceNumber=null;invoiceItems=[];
   $('invoiceTitle').textContent='Create Invoice';
   $('invoiceNumber').textContent='Assigned when saved';
   $('saveInvoice').textContent='Save invoice';
-  $('cancelEdit').hidden=true;
-  $('editingNotice').hidden=true;
+  $('cancelEdit').hidden=true;$('editingNotice').hidden=true;
   $('invoiceMessage').textContent='';
-  $('invoiceCustomer').value='';
-  $('invoiceQty').value='1';
-  $('invoicePrice').value='';
-
+  $('invoiceCustomer').value='';$('invoiceQty').value='1';$('invoicePrice').value='';
   const d=new Date();
-  $('invoiceDate').value=[
-    d.getFullYear(),
-    String(d.getMonth()+1).padStart(2,'0'),
-    String(d.getDate()).padStart(2,'0')
-  ].join('-');
-
-  invoiceDrawItems();
-  updateInvoicePrice();
+  $('invoiceDate').value=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
+  invoiceDrawItems();updateInvoicePrice();
 }
 
 function editInvoice(number){
   const inv=getInvoice(number);
-
-  if(!inv){
-    alert('Invoice not found.');
-    return;
-  }
-
+  if(!inv){alert('Invoice not found.');return;}
   if(editingInvoiceNumber){
-    if(!confirm('Discard the unsaved changes to the invoice currently being edited?')){
-      return;
-    }
+    if(!confirm('Discard the unsaved changes to the invoice currently being edited?'))return;
   }else if(invoiceItems.length>0){
-    if(!confirm('Discard the products in the new invoice and edit this saved invoice?')){
-      return;
-    }
+    if(!confirm('Discard the products in the new invoice and edit this saved invoice?'))return;
   }
-
-  const customer=customers.find(c=>
-    String(c.id)===String(inv.customer?.id)
-  );
-
-  if(!customer){
-    alert('This invoice customer is no longer in the customer list. Add the customer again before editing this invoice.');
-    return;
-  }
+  const customer=customers.find(c=>String(c.id)===String(inv.customer?.id));
+  if(!customer){alert('This invoice customer is no longer in the customer list. Add the customer again before editing.');return;}
 
   editingInvoiceNumber=number;
-
   $('invoiceCustomer').value=String(customer.id);
   $('invoiceDate').value=inv.date||'';
   $('invoiceNumber').textContent=inv.number;
   $('invoiceTitle').textContent='Edit Invoice '+inv.number;
   $('saveInvoice').textContent='Save changes';
-  $('cancelEdit').hidden=false;
-  $('editingNotice').hidden=false;
+  $('cancelEdit').hidden=false;$('editingNotice').hidden=false;
   $('invoiceMessage').textContent='Changes are not saved until you press Save changes.';
 
   invoiceItems=(inv.items||[]).map(item=>{
-    const pack=Number(item.pack||1);
-    const cartons=Number(item.cartons||0);
+    const pack=Number(item.pack||1),cartons=Number(item.cartons||0);
     const pricePerPair=Number(item.pricePerPair||0);
     const totalPairs=Number(item.totalPairs??(cartons*pack));
-
-    return {
-      code:item.code||'',
-      pack,
-      cartons,
-      pricePerPair,
-      totalPairs,
-      total:Number(item.total??(totalPairs*pricePerPair))
-    };
+    return {code:item.code||'',pack,cartons,pricePerPair,totalPairs,total:Number(item.total??(totalPairs*pricePerPair))};
   });
-
   invoiceDrawItems();
-
-  $('invoiceFormCard').scrollIntoView({
-    behavior:'smooth',
-    block:'start'
-  });
+  $('invoiceFormCard').scrollIntoView({behavior:'smooth',block:'start'});
 }
-
 function cancelInvoiceEdit(){
   if(!editingInvoiceNumber)return;
-
-  if(!confirm('Cancel editing? Your unsaved changes will be discarded.')){
-    return;
-  }
-
-  resetInvoiceForm();
+  if(confirm('Cancel editing? Your unsaved changes will be discarded.'))resetInvoiceForm();
 }
 
 $('saveInvoice').onclick=()=>{
-  const customerId=$('invoiceCustomer').value;
-  const customer=customers.find(c=>String(c.id)===String(customerId));
-
-  if(!customer||invoiceItems.length===0){
-    alert('Select a customer and add at least one product.');
-    return;
-  }
-
+  const customer=customers.find(c=>String(c.id)===String($('invoiceCustomer').value));
+  if(!customer||invoiceItems.length===0){alert('Select a customer and add at least one product.');return;}
   const date=$('invoiceDate').value;
-
-  if(!date){
-    alert('Select an invoice date.');
-    return;
-  }
-
-  if(editingInvoiceNumber){
-    saveInvoiceChanges(customer,date);
-  }else{
-    createNewInvoice(customer,date);
-  }
+  if(!date){alert('Select an invoice date.');return;}
+  if(editingInvoiceNumber)saveInvoiceChanges(customer,date);else createNewInvoice(customer,date);
 };
 
 function createNewInvoice(customer,date){
   const next=Number(localStorage.getItem('mai2_nextInvoice')||1);
   const number='INV-'+String(next).padStart(6,'0');
+  if(getInvoice(number)){alert('Invoice number '+number+' already exists. No new invoice was saved.');return;}
 
-  if(getInvoice(number)){
-    alert('Invoice number '+number+' already exists. No new invoice was saved.');
-    return;
-  }
-
-  const invoice={
-    number,
-    date,
-    customer:deepCopy(customer),
-    items:deepCopy(invoiceItems),
+  const inv={
+    number,date,customer:deepCopy(customer),items:deepCopy(invoiceItems),
     total:invoiceItems.reduce((s,x)=>s+Number(x.total||0),0),
-    createdAt:new Date().toISOString(),
-    history:[]
+    createdAt:new Date().toISOString(),history:[]
   };
-
-  const oldInvoices=deepCopy(invoices);
-  const oldNext=localStorage.getItem('mai2_nextInvoice');
-
-  invoices.push(invoice);
-
+  const oldInvoices=deepCopy(invoices),oldNext=localStorage.getItem('mai2_nextInvoice');
+  invoices.push(inv);
   try{
     save('mai2_invoices',invoices);
     localStorage.setItem('mai2_nextInvoice',String(next+1));
   }catch(err){
     invoices=oldInvoices;
-
     try{
       save('mai2_invoices',invoices);
-
-      if(oldNext===null){
-        localStorage.removeItem('mai2_nextInvoice');
-      }else{
-        localStorage.setItem('mai2_nextInvoice',oldNext);
-      }
+      if(oldNext===null)localStorage.removeItem('mai2_nextInvoice');
+      else localStorage.setItem('mai2_nextInvoice',oldNext);
     }catch(restoreError){}
-
-    alert('The invoice could not be saved. Your browser storage may be full.');
-    return;
+    alert('The invoice could not be saved. Your browser storage may be full.');return;
   }
 
-  const savedNumber=number;
-  const savedTotal=invoice.total;
-
-  resetInvoiceForm();
-  drawSavedInvoices();
-  viewInvoice(savedNumber);
-
-  $('invoiceMessage').textContent=
-    'Invoice '+savedNumber+' saved. Total: '+money(savedTotal);
+  const n=number,t=inv.total;
+  resetInvoiceForm();drawSavedInvoices();viewInvoice(n);
+  $('invoiceMessage').textContent='Invoice '+n+' saved. Total: '+money(t);
 }
 
 function saveInvoiceChanges(customer,date){
-  const index=invoices.findIndex(inv=>
-    String(inv.number)===String(editingInvoiceNumber)
-  );
+  const index=invoices.findIndex(x=>String(x.number)===String(editingInvoiceNumber));
+  if(index===-1){alert('Invoice not found. No changes were saved.');resetInvoiceForm();return;}
 
-  if(index===-1){
-    alert('The invoice could not be found. No changes were saved.');
-    resetInvoiceForm();
-    return;
-  }
-
-  const original=deepCopy(invoices[index]);
-  const before=invoiceSnapshot(original);
-
+  const original=deepCopy(invoices[index]),before=invoiceSnapshot(original);
   const updated={
-    ...original,
-    number:original.number,
-    date,
-    customer:deepCopy(customer),
+    ...original,number:original.number,date,customer:deepCopy(customer),
     items:deepCopy(invoiceItems),
     total:invoiceItems.reduce((s,x)=>s+Number(x.total||0),0),
     createdAt:original.createdAt||new Date().toISOString(),
     history:Array.isArray(original.history)?deepCopy(original.history):[]
   };
-
   const after=invoiceSnapshot(updated);
-  const changed=JSON.stringify(before)!==JSON.stringify(after);
 
-  if(!changed){
+  if(JSON.stringify(before)===JSON.stringify(after)){
     alert('No changes were detected. The invoice remains unchanged.');
-    resetInvoiceForm();
-    return;
+    resetInvoiceForm();return;
   }
 
-  updated.history.push({
-    action:'EDIT',
-    timestamp:new Date().toISOString(),
-    before,
-    after
-  });
-
+  updated.history.push({action:'EDIT',timestamp:new Date().toISOString(),before,after});
   invoices[index]=updated;
 
-  try{
-    save('mai2_invoices',invoices);
-  }catch(err){
+  try{save('mai2_invoices',invoices);}
+  catch(err){
     invoices[index]=original;
-
-    try{
-      save('mai2_invoices',invoices);
-    }catch(restoreError){}
-
-    alert('The changes could not be saved. Browser storage may be full.');
-    return;
+    try{save('mai2_invoices',invoices);}catch(restoreError){}
+    alert('The changes could not be saved. Browser storage may be full.');return;
   }
 
-  const savedNumber=updated.number;
-  const savedTotal=updated.total;
-
-  resetInvoiceForm();
-  drawSavedInvoices();
-  viewInvoice(savedNumber);
-
-  $('invoiceMessage').textContent=
-    'Invoice '+savedNumber+' updated. The previous version has been recorded in audit history. New total: '+money(savedTotal);
+  const n=updated.number,t=updated.total;
+  resetInvoiceForm();drawSavedInvoices();viewInvoice(n);
+  $('invoiceMessage').textContent='Invoice '+n+' updated. Audit history recorded. New total: '+money(t);
 }
 
 function drawSavedInvoices(){
   const query=$('searchInvoice').value.trim().toLowerCase();
-  const start=$('searchStart').value;
-  const end=$('searchEnd').value;
-
+  const start=$('searchStart').value,end=$('searchEnd').value;
   if(start&&end&&start>end){
-    $('searchResultCount').textContent=
-      'The start date must be before or equal to the end date.';
-    $('savedInvoices').innerHTML='<small>Please correct the date range.</small>';
-    return;
+    $('searchResultCount').textContent='The start date must be before or equal to the end date.';
+    $('savedInvoices').innerHTML='<small>Please correct the date range.</small>';return;
   }
 
   const filtered=invoices.filter(inv=>{
     const number=String(inv.number||'').toLowerCase();
     const name=String(inv.customer?.name||'').toLowerCase();
-    const matchesText=!query||number.includes(query)||name.includes(query);
     const date=String(inv.date||'');
-    return matchesText&&(!start||date>=start)&&(!end||date<=end);
+    return (!query||number.includes(query)||name.includes(query))&&(!start||date>=start)&&(!end||date<=end);
   });
 
-  $('searchResultCount').textContent=
-    `Showing ${filtered.length} of ${invoices.length} invoice(s).`;
-
+  $('searchResultCount').textContent=`Showing ${filtered.length} of ${invoices.length} invoice(s).`;
   $('savedInvoices').innerHTML=filtered.slice().reverse().map(inv=>
     `<div class="item">
       <b>${esc(inv.number)}</b><br>
@@ -778,86 +507,84 @@ function drawSavedInvoices(){
 }
 
 function clearInvoiceSearch(){
-  $('searchInvoice').value='';
-  $('searchStart').value='';
-  $('searchEnd').value='';
+  $('searchInvoice').value='';$('searchStart').value='';$('searchEnd').value='';
   drawSavedInvoices();
 }
-
 $('searchInvoice').addEventListener('input',drawSavedInvoices);
 $('searchStart').addEventListener('change',drawSavedInvoices);
 $('searchEnd').addEventListener('change',drawSavedInvoices);
 
+/* Build the printable invoice separately from the audit history. */
 function viewInvoice(number){
   const inv=getInvoice(number);
   if(!inv)return;
 
-  let html=`<h3>${esc(inv.number)}</h3>
-    <p>Date: ${esc(inv.date)}</p>
-    <p>Customer: ${esc(inv.customer?.name||'')}</p>
-    <p>Phone: ${esc(inv.customer?.phone||'')}</p>
-    <p>Address: ${esc(inv.customer?.address||'')}</p>
-    <p>Created: ${esc(formatTimestamp(inv.createdAt))}</p>
-    <hr>`;
+  let html=`<div id="printableInvoice" class="invoice-paper">
+    <div class="no-print">
+      <button type="button" onclick="printInvoice()">Print / Save PDF</button>
+      <p><small>On iPhone, use the print preview's Share option to save or share the PDF.</small></p>
+    </div>
+    <div class="print-business">
+      <h2>Mai Invoice</h2>
+      <p>Business management</p>
+    </div>
+    <h2>INVOICE</h2>
+    <div class="print-meta">
+      <p><b>Invoice number:</b> ${esc(inv.number)}</p>
+      <p><b>Invoice date:</b> ${esc(inv.date)}</p>
+      <p><b>Customer:</b> ${esc(inv.customer?.name||'')}</p>
+      <p><b>Phone:</b> ${esc(inv.customer?.phone||'')}</p>
+      <p><b>Address:</b> ${esc(inv.customer?.address||'')}</p>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Product code</th>
+        <th>Cartons</th>
+        <th>Pairs/carton</th>
+        <th>Total pairs</th>
+        <th>Price/pair</th>
+        <th class="amount">Line total</th>
+      </tr></thead><tbody>`;
 
   (inv.items||[]).forEach(item=>{
-    html+=`<div class="item">
-      <b>Product ${esc(item.code)}</b><br>
-      Cartons: ${Number(item.cartons||0)}<br>
-      Pairs per carton: ${Number(item.pack||0)}<br>
-      Total pairs: ${Number(item.totalPairs||0)}<br>
-      Price per pair: ${money(item.pricePerPair)}<br>
-      Line total: ${money(item.total)}
-    </div>`;
+    html+=`<tr>
+      <td>${esc(item.code)}</td>
+      <td>${Number(item.cartons||0)}</td>
+      <td>${Number(item.pack||0)}</td>
+      <td>${Number(item.totalPairs||0)}</td>
+      <td>${money(item.pricePerPair)}</td>
+      <td class="amount">${money(item.total)}</td>
+    </tr>`;
   });
 
-  html+=`<p class="total">Invoice total: ${money(inv.total)}</p>`;
-  html+='<hr><h3>Audit history</h3>';
+  html+=`</tbody></table>
+    <p class="invoice-total">Invoice total: ${money(inv.total)}</p>
+    <p>Thank you for your business.</p>
+  </div>`;
 
   const history=Array.isArray(inv.history)?inv.history:[];
+  html+='<hr><h3>Audit history</h3>';
 
-  if(history.length===0){
+  if(!history.length){
     html+='<p><small>No edits recorded. Older invoices may not have audit history.</small></p>';
   }else{
-    html+='<p><small>Times are shown in your device’s local time.</small></p>';
-
     history.slice().reverse().forEach((entry,index)=>{
-      const before=entry.before||{};
-      const after=entry.after||{};
-
+      const before=entry.before||{},after=entry.after||{};
       html+=`<div class="history-entry">
         <b>Change ${history.length-index}: ${esc(entry.action||'EDIT')}</b>
         <p><small>${esc(formatTimestamp(entry.timestamp))}</small></p>
-        <p><b>Before</b><br>
-        Date: ${esc(before.date||'')}<br>
-        Customer: ${esc(before.customer?.name||'')}<br>
-        Total: ${money(before.total)}</p>
-        <p><b>After</b><br>
-        Date: ${esc(after.date||'')}<br>
-        Customer: ${esc(after.customer?.name||'')}<br>
-        Total: ${money(after.total)}</p>
-        <details>
-          <summary>View full before-and-after details</summary>
-          <p><b>Previous invoice lines</b></p>`;
+        <p><b>Before:</b> ${esc(before.date||'')} · ${esc(before.customer?.name||'')} · ${money(before.total)}</p>
+        <p><b>After:</b> ${esc(after.date||'')} · ${esc(after.customer?.name||'')} · ${money(after.total)}</p>
+        <details><summary>View invoice line changes</summary>
+        <p><b>Previous items</b></p>`;
 
       (before.items||[]).forEach(item=>{
-        html+=`<div class="item">
-          ${esc(item.code)} · ${Number(item.cartons||0)} cartons ·
-          ${Number(item.totalPairs||0)} pairs ·
-          ${money(item.pricePerPair)}/pair · ${money(item.total)}
-        </div>`;
+        html+=`<div class="item">${esc(item.code)} · ${Number(item.cartons||0)} cartons · ${Number(item.totalPairs||0)} pairs · ${money(item.pricePerPair)}/pair · ${money(item.total)}</div>`;
       });
-
-      html+='<p><b>Updated invoice lines</b></p>';
-
+      html+='<p><b>Updated items</b></p>';
       (after.items||[]).forEach(item=>{
-        html+=`<div class="item">
-          ${esc(item.code)} · ${Number(item.cartons||0)} cartons ·
-          ${Number(item.totalPairs||0)} pairs ·
-          ${money(item.pricePerPair)}/pair · ${money(item.total)}
-        </div>`;
+        html+=`<div class="item">${esc(item.code)} · ${Number(item.cartons||0)} cartons · ${Number(item.totalPairs||0)} pairs · ${money(item.pricePerPair)}/pair · ${money(item.total)}</div>`;
       });
-
       html+='</details></div>';
     });
   }
@@ -866,48 +593,43 @@ function viewInvoice(number){
   $('invoiceDetail').scrollIntoView({behavior:'smooth',block:'start'});
 }
 
+/* The browser print dialog can print or save the printable invoice as PDF. */
+function printInvoice(){
+  if(!$('printableInvoice')){
+    alert('Open an invoice first.');return;
+  }
+  window.print();
+}
+
 function exportBackup(){
   const data={
-    products,
-    customers,
-    prices,
-    invoices,
+    products,customers,prices,invoices,
     nextInvoice:localStorage.getItem('mai2_nextInvoice')||'1',
     exportedAt:new Date().toISOString()
   };
-
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-
-  a.href=url;
-  a.download='mai-invoice-backup.json';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
+  a.href=url;a.download='mai-invoice-backup.json';
+  document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
 function renderLanguage(){
   const zh=$('language').value==='zh';
-
   $('productTitle').textContent=zh?'产品管理':'Products';
   $('customerTitle').textContent=zh?'客户管理':'Customers';
   $('priceTitle').textContent=zh?'客户专属价格':'Customer-specific prices';
   $('invoiceTitle').textContent=editingInvoiceNumber
     ?(zh?'编辑发票':'Edit Invoice '+editingInvoiceNumber)
     :(zh?'创建发票':'Create Invoice');
-
   $('addProduct').textContent=zh?'添加产品':'Add product';
   $('addCustomer').textContent=zh?'添加客户':'Add customer';
   $('savePrice').textContent=zh?'保存客户价格':'Save customer price';
   $('addInvoiceItem').textContent=zh?'添加到发票':'Add to invoice';
-
   $('saveInvoice').textContent=editingInvoiceNumber
     ?(zh?'保存更改':'Save changes')
     :(zh?'保存发票':'Save invoice');
-
   $('cancelEdit').textContent=zh?'取消编辑':'Cancel editing';
 }
 
