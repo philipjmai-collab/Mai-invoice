@@ -19,6 +19,7 @@ small{color:#666}
 h2{font-size:19px}
 label{display:block;margin-top:10px}
 .total{font-size:20px;font-weight:bold}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:Arial,sans-serif}
 </style>
 </head>
 <body>
@@ -34,45 +35,25 @@ label{display:block;margin-top:10px}
 </header>
 
 <main>
-
 <section class="card">
 <h2 id="invoiceTitle">Create Invoice</h2>
-
 <label for="invoiceCustomer">Customer</label>
-<select id="invoiceCustomer">
-<option value="">Select customer</option>
-</select>
-
+<select id="invoiceCustomer"><option value="">Select customer</option></select>
 <label for="invoiceDate">Invoice date</label>
 <input type="date" id="invoiceDate">
-
 <p>Invoice number: <b id="invoiceNumber">Assigned when saved</b></p>
-
 <hr>
-
 <h3>Add product</h3>
-
 <label for="invoiceProduct">Product code</label>
-<select id="invoiceProduct">
-<option value="">Select product</option>
-</select>
-
+<select id="invoiceProduct"><option value="">Select product</option></select>
 <label for="invoiceQty">Number of cartons</label>
 <input type="number" id="invoiceQty" min="1" step="1" value="1">
-
 <label for="invoicePrice">Price per pair (R)</label>
 <input type="number" id="invoicePrice" min="0" step="0.01">
-
-<p id="priceHint"><small>Customer-specific prices will be applied automatically.</small></p>
-
+<p><small>Customer-specific prices are applied automatically.</small></p>
 <button type="button" id="addInvoiceItem">Add to invoice</button>
-
-<div id="invoiceItems">
-<p>No products added yet.</p>
-</div>
-
+<div id="invoiceItems"><p>No products added yet.</p></div>
 <p class="total">Invoice total: <span id="invoiceTotal">R0.00</span></p>
-
 <button type="button" id="saveInvoice">Save invoice</button>
 <p id="invoiceMessage" role="status"></p>
 </section>
@@ -82,13 +63,10 @@ label{display:block;margin-top:10px}
 <form id="productForm">
 <label for="pcode">Product code</label>
 <input id="pcode" placeholder="Product code" required>
-
 <label for="pack">Pairs per carton</label>
 <input id="pack" type="number" min="1" step="1" placeholder="Pairs per carton" required>
-
 <label for="price">Standard price per pair (R)</label>
 <input id="price" type="number" min="0" step="0.01" placeholder="Price per pair (R)" required>
-
 <button id="addProduct">Add product</button>
 </form>
 <div id="products"></div>
@@ -99,16 +77,12 @@ label{display:block;margin-top:10px}
 <form id="customerForm">
 <label for="cname">Customer name</label>
 <input id="cname" placeholder="Customer name" required>
-
 <label for="phone">Phone number</label>
 <input id="phone" placeholder="Phone number">
-
 <label for="address">Address</label>
 <input id="address" placeholder="Address">
-
 <label for="opening">Opening balance (R)</label>
 <input id="opening" type="number" step="0.01" placeholder="Opening balance (R)" value="0" required>
-
 <button id="addCustomer">Add customer</button>
 </form>
 <div id="customers"></div>
@@ -118,13 +92,10 @@ label{display:block;margin-top:10px}
 <h2 id="priceTitle">Customer-specific prices</h2>
 <label for="customerSelect">Customer</label>
 <select id="customerSelect"></select>
-
 <label for="productSelect">Product code</label>
 <select id="productSelect"></select>
-
 <label for="specialPrice">Customer price per pair (R)</label>
 <input id="specialPrice" type="number" min="0" step="0.01" placeholder="Customer price per pair (R)">
-
 <button type="button" id="savePrice">Save customer price</button>
 <div id="priceList"></div>
 </section>
@@ -135,23 +106,25 @@ label{display:block;margin-top:10px}
 </section>
 
 <section class="card">
-<h2>Data backup</h2>
-<button class="secondary" type="button" onclick="exportBackup()">Download backup</button>
-<small>Back up regularly. Records are stored in this browser. Clearing browser data may erase them.</small>
+<h2>Invoice details</h2>
+<div id="invoiceDetail"><small>Select View invoice from the saved invoice list.</small></div>
 </section>
 
+<section class="card">
+<h2>Data backup</h2>
+<button class="secondary" type="button" onclick="exportBackup()">Download backup</button>
+<small>Records are stored in this browser. Back up regularly. Clearing browser data may erase them.</small>
+</section>
 </main>
 
 <script>
 const $=id=>document.getElementById(id);
-
 const load=(key,def=[])=>{
   try{
     const value=JSON.parse(localStorage.getItem(key));
     return value===null?def:value;
   }catch(e){return def}
 };
-
 const save=(key,val)=>localStorage.setItem(key,JSON.stringify(val));
 const money=n=>'R'+Number(n||0).toFixed(2);
 
@@ -189,7 +162,7 @@ function draw(){
   ).join('');
 
   $('priceList').innerHTML=prices.map(x=>{
-    const c=customers.find(c=>c.id===x.customerId);
+    const c=customers.find(c=>String(c.id)===String(x.customerId));
     return c?`<div class="item">${esc(c.name)} · Product ${esc(x.code)}: ${money(x.price)}/pair</div>`:'';
   }).join('');
 
@@ -207,7 +180,7 @@ function refreshInvoiceChoices(){
   $('invoiceProduct').innerHTML='<option value="">Select product</option>'+
     products.map(p=>`<option value="${esc(p.code)}">${esc(p.code)}</option>`).join('');
 
-  if(customers.some(c=>c.id===oldCustomer))$('invoiceCustomer').value=oldCustomer;
+  if(customers.some(c=>String(c.id)===String(oldCustomer)))$('invoiceCustomer').value=oldCustomer;
   if(products.some(p=>p.code===oldProduct))$('invoiceProduct').value=oldProduct;
 
   updateInvoicePrice();
@@ -235,8 +208,7 @@ function updateInvoicePrice(){
   if(!product)return;
 
   const special=prices.find(x=>
-    String(x.customerId)===String(customerId)&&
-    String(x.code)===String(code)
+    String(x.customerId)===String(customerId)&&String(x.code)===String(code)
   );
 
   $('invoicePrice').value=special?special.price:product.price;
@@ -247,7 +219,6 @@ $('invoiceProduct').addEventListener('change',updateInvoicePrice);
 
 $('productForm').onsubmit=e=>{
   e.preventDefault();
-
   const code=$('pcode').value.trim();
 
   if(products.some(p=>p.code===code)){
@@ -394,7 +365,8 @@ $('saveInvoice').onclick=()=>{
     customer:{...customer},
     items:invoiceItems.map(x=>({...x})),
     total:invoiceItems.reduce((s,x)=>s+x.total,0),
-    createdAt:new Date().toISOString()
+    createdAt:new Date().toISOString(),
+    history:[]
   };
 
   invoices.push(invoice);
@@ -418,10 +390,40 @@ $('saveInvoice').onclick=()=>{
 
 function drawSavedInvoices(){
   $('savedInvoices').innerHTML=invoices.slice().reverse().map(inv=>
-    `<div class="item"><b>${esc(inv.number)}</b><br>
-    ${esc(inv.date)} · ${esc(inv.customer.name)}<br>
-    Total: ${money(inv.total)}</div>`
+    `<div class="item">
+      <b>${esc(inv.number)}</b><br>
+      ${esc(inv.date)} · ${esc(inv.customer.name)}<br>
+      Total: ${money(inv.total)}
+      <button type="button" onclick="viewInvoice('${esc(inv.number)}')">View invoice</button>
+    </div>`
   ).join('')||'<small>No invoices saved yet.</small>';
+}
+
+function viewInvoice(number){
+  const inv=invoices.find(x=>x.number===number);
+  if(!inv)return;
+
+  let html=`<h3>${esc(inv.number)}</h3>
+    <p>Date: ${esc(inv.date)}</p>
+    <p>Customer: ${esc(inv.customer.name)}</p>
+    <p>Phone: ${esc(inv.customer.phone||'')}</p>
+    <p>Address: ${esc(inv.customer.address||'')}</p>
+    <hr>`;
+
+  inv.items.forEach(item=>{
+    html+=`<div class="item">
+      <b>Product ${esc(item.code)}</b><br>
+      Cartons: ${item.cartons}<br>
+      Pairs per carton: ${item.pack}<br>
+      Total pairs: ${item.totalPairs}<br>
+      Price per pair: ${money(item.pricePerPair)}<br>
+      Line total: ${money(item.total)}
+    </div>`;
+  });
+
+  html+=`<p class="total">Invoice total: ${money(inv.total)}</p>`;
+  $('invoiceDetail').innerHTML=html;
+  $('invoiceDetail').scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 function exportBackup(){
@@ -444,7 +446,6 @@ function exportBackup(){
 
 function renderLanguage(){
   const zh=$('language').value==='zh';
-
   $('productTitle').textContent=zh?'产品管理':'Products';
   $('customerTitle').textContent=zh?'客户管理':'Customers';
   $('priceTitle').textContent=zh?'客户专属价格':'Customer-specific prices';
