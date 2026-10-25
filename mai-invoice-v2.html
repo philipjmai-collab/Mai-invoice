@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mai Invoice V20</title>
+<title>Mai Invoice V21</title>
 <style>
 *{box-sizing:border-box}
 body{font-family:Arial,sans-serif;margin:0;background:#f3f5f7;color:#222}
@@ -159,7 +159,10 @@ Generate a QR code whose encoded content is compact JSON in exactly this structu
 <input id="opening" type="number" step="0.01" placeholder="Opening balance (R)" value="0" required>
 <button id="addCustomer">Add customer</button>
 </form>
+<label for="searchCustomers">Search customers</label>
+<input id="searchCustomers" type="search" placeholder="Search customer name or phone number">
 <div id="customers"></div>
+<div id="customerInvoicesPanel" class="item" hidden></div>
 </section>
 
 <section class="card">
@@ -326,15 +329,19 @@ function draw(){
   }
   renderProductsList();
 
-  $('customers').innerHTML=customers.map((c,i)=>{
+  const customerQuery=($('searchCustomers')?.value||'').trim().toLowerCase();
+  const visibleCustomers=customers.filter(c=>String(c.name||'').toLowerCase().includes(customerQuery)||String(c.phone||'').toLowerCase().includes(customerQuery));
+  $('customers').innerHTML=visibleCustomers.map((c)=>{
     const balance=customerBalance(c);
     const customerPayments=payments.filter(p=>String(p.customerId)===String(c.id));
     return `<div class="item"><b>${esc(c.name)}</b><br>
     <small>${esc(c.phone)} · Opening balance: ${money(c.opening)} · <b>Current balance: ${money(balance)}</b></small><br>
     <button type="button" onclick="recordCustomerPayment('${esc(c.id)}')">Record payment</button>
+    <button type="button" class="secondary" onclick="editCustomerBalance('${esc(c.id)}')">Edit opening balance</button>
+    <button type="button" class="secondary" onclick="viewCustomerInvoices('${esc(c.id)}')">View linked invoices (${invoices.filter(inv=>String(inv.customer?.id)===String(c.id)).length})</button>
     <details><summary>Payment history (${customerPayments.length})</summary>${customerPayments.slice().reverse().map(p=>`<p>${esc(p.date)} · ${money(p.amount)}${p.reference?' · '+esc(p.reference):''}</p>`).join('')||'<small>No payments recorded.</small>'}</details>
-    <button class="secondary" type="button" onclick="deleteCustomer(${i})">Delete</button></div>`;
-  }).join('')||'<small>No customers yet.</small>';
+    <button class="danger" type="button" onclick="deleteCustomerById('${esc(c.id)}')">Delete customer</button></div>`;
+  }).join('')||(customers.length?'<small>No customers match your search.</small>':'<small>No customers yet.</small>');
 
   $('customerSelect').innerHTML=customers.map(c=>
     `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
@@ -459,6 +466,43 @@ function deleteCustomer(i){
   customers.splice(i,1);prices=prices.filter(p=>String(p.customerId)!==String(id));
   try{save('mai2_customers',customers);save('mai2_prices',prices);draw();}
   catch(e){customers=oldC;prices=oldP;alert('Could not delete customer.');}
+}
+function editCustomerBalance(customerId){
+  const customer=customers.find(c=>String(c.id)===String(customerId));
+  if(!customer)return;
+  const current=Number(customer.opening||0);
+  const raw=prompt('Edit opening balance for '+customer.name+' (R). Current opening balance: '+money(current)+'. Current balance including invoices and payments: '+money(customerBalance(customer)),String(current.toFixed(2)));
+  if(raw===null)return;
+  const amount=Number(raw);
+  if(raw.trim()===''||!Number.isFinite(amount)){alert('Enter a valid opening balance.');return;}
+  const old=customer.opening;customer.opening=amount;
+  try{save('mai2_customers',customers);}catch(e){customer.opening=old;alert('Could not save the balance change.');return;}
+  draw();alert('Opening balance updated. Current balance: '+money(customerBalance(customer)));
+}
+function viewCustomerInvoices(customerId){
+  const customer=customers.find(c=>String(c.id)===String(customerId));
+  if(!customer)return;
+  const linked=invoices.filter(inv=>String(inv.customer?.id)===String(customerId)).slice().reverse();
+  const panel=$('customerInvoicesPanel');
+  panel.hidden=false;
+  panel.innerHTML=`<h3>Invoices for ${esc(customer.name)}</h3><p>Current balance: <b>${money(customerBalance(customer))}</b></p>`+
+    (linked.map(inv=>`<div class="item"><b>${esc(inv.number)}</b><br>${esc(inv.date)} · Total: ${money(inv.total)}<br>
+    <button type="button" onclick="viewInvoice('${esc(inv.number)}')">View invoice</button>
+    <button type="button" class="secondary" onclick="editInvoice('${esc(inv.number)}')">Edit invoice</button>
+    <button type="button" class="danger" onclick="deleteInvoice('${esc(inv.number)}');viewCustomerInvoices('${esc(customerId)}')">Delete invoice</button></div>`).join('')||'<small>No linked invoices.</small>');
+  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function deleteCustomerById(customerId){
+  const index=customers.findIndex(c=>String(c.id)===String(customerId));
+  if(index<0)return;
+  const customer=customers[index];
+  const linked=invoices.filter(inv=>String(inv.customer?.id)===String(customerId)).length;
+  const warning=linked?` This customer has ${linked} linked invoice(s); those invoices will remain in history, but the customer record will be removed.`:'';
+  if(!confirm('Delete customer '+customer.name+'?'+warning+' This cannot be undone.'))return;
+  const oldC=deepCopy(customers),oldP=deepCopy(prices),oldPayments=deepCopy(payments);
+  customers.splice(index,1);prices=prices.filter(p=>String(p.customerId)!==String(customerId));payments=payments.filter(p=>String(p.customerId)!==String(customerId));
+  try{save('mai2_customers',customers);save('mai2_prices',prices);save('mai2_payments',payments);if($('customerInvoicesPanel')){$('customerInvoicesPanel').hidden=true;$('customerInvoicesPanel').innerHTML='';}draw();}
+  catch(e){customers=oldC;prices=oldP;payments=oldPayments;alert('Could not delete customer.');}
 }
 
 $('addInvoiceItem').onclick=()=>{
@@ -692,6 +736,7 @@ function clearInvoiceSearch(){
   drawSavedInvoices();
 }
 $('searchInvoice').addEventListener('input',drawSavedInvoices);
+$('searchCustomers').addEventListener('input',draw);
 $('searchStart').addEventListener('change',drawSavedInvoices);
 $('searchEnd').addEventListener('change',drawSavedInvoices);
 
