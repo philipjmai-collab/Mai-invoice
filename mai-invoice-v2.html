@@ -17,64 +17,78 @@ button{background:#173b32;color:white;border:0;font-weight:bold}
 .item{border-bottom:1px solid #ddd;padding:10px 0;overflow-wrap:anywhere}
 small{color:#666}
 h2{font-size:19px}
+label{display:block;margin-top:10px}
+.total{font-size:20px;font-weight:bold}
 </style>
 </head>
 <body>
-<section class="card" id="invoiceSection">
-  <h2>Create Invoice</h2>
 
-  <label for="invoiceCustomer">Customer</label>
-  <select id="invoiceCustomer">
-    <option value="">Select customer</option>
-  </select>
-
-  <label for="invoiceDate">Invoice Date</label>
-  <input type="date" id="invoiceDate">
-
-  <label>Invoice Number</label>
-  <p id="invoiceNumber">Will be assigned when saved</p>
-
-  <hr>
-
-  <h3>Add Product</h3>
-
-  <label for="invoiceProduct">Product Code</label>
-  <select id="invoiceProduct">
-    <option value="">Select product</option>
-  </select>
-
-  <label for="invoiceQty">Cartons</label>
-  <input type="number" id="invoiceQty" min="1" step="1" value="1">
-
-  <label for="invoicePrice">Price per Pair (R)</label>
-  <input type="number" id="invoicePrice" min="0" step="0.01">
-
-  <button type="button" id="addInvoiceItem">Add to Invoice</button>
-
-  <div id="invoiceItems">
-    <p>No products added yet.</p>
-  </div>
-
-  <h3>Invoice Total: <span id="invoiceTotal">R0.00</span></h3>
-
-  <button type="button" id="saveInvoice">Save Invoice</button>
-  <p id="invoiceMessage" role="status"></p>
-</section>
- <header>
+<header>
 <h1>Mai Invoice</h1>
 <p>Business management</p>
+<label for="language">Interface language</label>
 <select id="language" onchange="renderLanguage()">
 <option value="en">English</option>
 <option value="zh">简体中文</option>
 </select>
 </header>
+
 <main>
+
+<section class="card">
+<h2 id="invoiceTitle">Create Invoice</h2>
+
+<label for="invoiceCustomer">Customer</label>
+<select id="invoiceCustomer">
+<option value="">Select customer</option>
+</select>
+
+<label for="invoiceDate">Invoice date</label>
+<input type="date" id="invoiceDate">
+
+<p>Invoice number: <b id="invoiceNumber">Assigned when saved</b></p>
+
+<hr>
+
+<h3>Add product</h3>
+
+<label for="invoiceProduct">Product code</label>
+<select id="invoiceProduct">
+<option value="">Select product</option>
+</select>
+
+<label for="invoiceQty">Number of cartons</label>
+<input type="number" id="invoiceQty" min="1" step="1" value="1">
+
+<label for="invoicePrice">Price per pair (R)</label>
+<input type="number" id="invoicePrice" min="0" step="0.01">
+
+<p id="priceHint"><small>Customer-specific prices will be applied automatically.</small></p>
+
+<button type="button" id="addInvoiceItem">Add to invoice</button>
+
+<div id="invoiceItems">
+<p>No products added yet.</p>
+</div>
+
+<p class="total">Invoice total: <span id="invoiceTotal">R0.00</span></p>
+
+<button type="button" id="saveInvoice">Save invoice</button>
+<p id="invoiceMessage" role="status"></p>
+</section>
+
 <section class="card">
 <h2 id="productTitle">Products</h2>
 <form id="productForm">
+<label for="pcode">Product code</label>
 <input id="pcode" placeholder="Product code" required>
-<input id="pack" type="number" min="1" placeholder="Pairs per carton" required>
+
+<label for="pack">Pairs per carton</label>
+<input id="pack" type="number" min="1" step="1" placeholder="Pairs per carton" required>
+
+<label for="price">Standard price per pair (R)</label>
 <input id="price" type="number" min="0" step="0.01" placeholder="Price per pair (R)" required>
+
 <button id="addProduct">Add product</button>
 </form>
 <div id="products"></div>
@@ -83,10 +97,18 @@ h2{font-size:19px}
 <section class="card">
 <h2 id="customerTitle">Customers</h2>
 <form id="customerForm">
+<label for="cname">Customer name</label>
 <input id="cname" placeholder="Customer name" required>
+
+<label for="phone">Phone number</label>
 <input id="phone" placeholder="Phone number">
+
+<label for="address">Address</label>
 <input id="address" placeholder="Address">
+
+<label for="opening">Opening balance (R)</label>
 <input id="opening" type="number" step="0.01" placeholder="Opening balance (R)" value="0" required>
+
 <button id="addCustomer">Add customer</button>
 </form>
 <div id="customers"></div>
@@ -94,90 +116,347 @@ h2{font-size:19px}
 
 <section class="card">
 <h2 id="priceTitle">Customer-specific prices</h2>
+<label for="customerSelect">Customer</label>
 <select id="customerSelect"></select>
+
+<label for="productSelect">Product code</label>
 <select id="productSelect"></select>
+
+<label for="specialPrice">Customer price per pair (R)</label>
 <input id="specialPrice" type="number" min="0" step="0.01" placeholder="Customer price per pair (R)">
-<button id="savePrice">Save customer price</button>
+
+<button type="button" id="savePrice">Save customer price</button>
 <div id="priceList"></div>
 </section>
+
+<section class="card">
+<h2>Saved invoices</h2>
+<div id="savedInvoices"><small>No invoices saved yet.</small></div>
+</section>
+
 <section class="card">
 <h2>Data backup</h2>
-<button class="secondary" onclick="exportBackup()">Download backup</button>
-<small>Records are stored in this browser. Back up regularly. Clearing browser data may erase them.</small>
+<button class="secondary" type="button" onclick="exportBackup()">Download backup</button>
+<small>Back up regularly. Records are stored in this browser. Clearing browser data may erase them.</small>
 </section>
+
 </main>
+
 <script>
 const $=id=>document.getElementById(id);
-const load=(key,def=[])=>{try{return JSON.parse(localStorage.getItem(key))||def}catch{return def}};
+
+const load=(key,def=[])=>{
+  try{
+    const value=JSON.parse(localStorage.getItem(key));
+    return value===null?def:value;
+  }catch(e){return def}
+};
+
 const save=(key,val)=>localStorage.setItem(key,JSON.stringify(val));
+const money=n=>'R'+Number(n||0).toFixed(2);
+
 let products=load('mai2_products');
 let customers=load('mai2_customers');
 let prices=load('mai2_prices');
-const money=n=>'R'+Number(n||0).toFixed(2);
+let invoices=load('mai2_invoices');
+let invoiceItems=[];
+
+function esc(s){
+  return String(s??'').replace(/[&<>"']/g,c=>({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
 
 function draw(){
- $('products').innerHTML=products.map((p,i)=>`<div class="item"><b>${esc(p.code)}</b> — ${esc(p.code)}<br><small>${p.pack} pairs/carton · ${money(p.price)}/pair · ${money(p.pack*p.price)}/carton</small><button class="secondary" onclick="deleteProduct(${i})">Delete</button></div>`).join('')||'<small>No products yet.</small>';
- $('customers').innerHTML=customers.map((c,i)=>`<div class="item"><b>${esc(c.name)}</b><br><small>${esc(c.phone)} · Opening balance: ${money(c.opening)}</small><button class="secondary" onclick="deleteCustomer(${i})">Delete</button></div>`).join('')||'<small>No customers yet.</small>';
- $('customerSelect').innerHTML=customers.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
- $('productSelect').innerHTML=products.map(p=>`<option value="${esc(p.code)}">${esc(p.code)}</option>`).join('');
- $('priceList').innerHTML=prices.map(x=>{let c=customers.find(c=>c.id===x.customerId);return c?`<div class="item">${esc(c.name)} · Product ${esc(x.code)}: ${money(x.price)}/pair</div>`:''}).join('');
+  $('products').innerHTML=products.map((p,i)=>
+    `<div class="item"><b>${esc(p.code)}</b><br>
+    <small>${p.pack} pairs/carton · ${money(p.price)}/pair · ${money(p.pack*p.price)}/carton</small>
+    <button class="secondary" type="button" onclick="deleteProduct(${i})">Delete</button></div>`
+  ).join('')||'<small>No products yet.</small>';
+
+  $('customers').innerHTML=customers.map((c,i)=>
+    `<div class="item"><b>${esc(c.name)}</b><br>
+    <small>${esc(c.phone)} · Opening balance: ${money(c.opening)}</small>
+    <button class="secondary" type="button" onclick="deleteCustomer(${i})">Delete</button></div>`
+  ).join('')||'<small>No customers yet.</small>';
+
+  $('customerSelect').innerHTML=customers.map(c=>
+    `<option value="${esc(c.id)}">${esc(c.name)}</option>`
+  ).join('');
+
+  $('productSelect').innerHTML=products.map(p=>
+    `<option value="${esc(p.code)}">${esc(p.code)}</option>`
+  ).join('');
+
+  $('priceList').innerHTML=prices.map(x=>{
+    const c=customers.find(c=>c.id===x.customerId);
+    return c?`<div class="item">${esc(c.name)} · Product ${esc(x.code)}: ${money(x.price)}/pair</div>`:'';
+  }).join('');
+
+  refreshInvoiceChoices();
+  drawSavedInvoices();
 }
-function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-$('productForm').onsubmit=e=>{e.preventDefault();let code=$('pcode').value.trim();if(products.some(p=>p.code===code)){alert('Product code already exists.');return}products.push({code,pack:Number($('pack').value),price:Number($('price').value)});save('mai2_products',products);e.target.reset();draw()};
-$('customerForm').onsubmit=e=>{e.preventDefault();customers.push({id:Date.now().toString(),name:$('cname').value.trim(),phone:$('phone').value.trim(),address:$('address').value.trim(),opening:Number($('opening').value)});save('mai2_customers',customers);e.target.reset();$('opening').value='0';draw()};
-$('savePrice').onclick=()=>{let customerId=$('customerSelect').value,code=$('productSelect').value,price=Number($('specialPrice').value);if(!customerId||!code||$('specialPrice').value===''||price<0){alert('Choose a customer and product and enter a price.');return}let found=prices.find(x=>x.customerId===customerId&&x.code===code);if(found)found.price=price;else prices.push({customerId,code,price});save('mai2_prices',prices);$('specialPrice').value='';draw()};
-function deleteProduct(i){if(confirm('Delete this product?')){products.splice(i,1);save('mai2_products',products);draw()}}
-function deleteCustomer(i){if(confirm('Delete this customer?')){let id=customers[i].id;customers.splice(i,1);prices=prices.filter(p=>p.customerId!==id);save('mai2_customers',customers);save('mai2_prices',prices);draw()}}
-function exportBackup(){let data={products,customers,prices,exportedAt:new Date().toISOString()};let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download='mai-invoice-backup.json';a.click();URL.revokeObjectURL(a.href)}
-function renderLanguage(){let zh=$('language').value==='zh';$('productTitle').textContent=zh?'产品管理':'Products';$('customerTitle').textContent=zh?'客户管理':'Customers';$('priceTitle').textContent=zh?'客户专属价格':'Customer-specific prices';$('addProduct').textContent=zh?'添加产品':'Add product';$('addCustomer').textContent=zh?'添加客户':'Add customer';$('savePrice').textContent=zh?'保存客户价格':'Save customer price';}
-draw();
-const invoices=load('mai2_invoices',[]);
-let invoiceItems=[];
-function invoiceRefresh(){
-  $('invoiceCustomer').innerHTML='<option value="">Select customer</option>'+customers.map((c,i)=>'<option value="'+i+'">'+esc(c.name)+'</option>').join('');
-  $('invoiceProduct').innerHTML='<option value="">Select product</option>'+products.map((p,i)=>'<option value="'+i+'">'+esc(p.code)+'</option>').join('');
-  if(!$('invoiceDate').value)$('invoiceDate').value=new Date().toISOString().slice(0,10);
+
+function refreshInvoiceChoices(){
+  const oldCustomer=$('invoiceCustomer').value;
+  const oldProduct=$('invoiceProduct').value;
+
+  $('invoiceCustomer').innerHTML='<option value="">Select customer</option>'+
+    customers.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+
+  $('invoiceProduct').innerHTML='<option value="">Select product</option>'+
+    products.map(p=>`<option value="${esc(p.code)}">${esc(p.code)}</option>`).join('');
+
+  if(customers.some(c=>c.id===oldCustomer))$('invoiceCustomer').value=oldCustomer;
+  if(products.some(p=>p.code===oldProduct))$('invoiceProduct').value=oldProduct;
+
+  updateInvoicePrice();
+
+  if(!$('invoiceDate').value){
+    const d=new Date();
+    $('invoiceDate').value=[
+      d.getFullYear(),
+      String(d.getMonth()+1).padStart(2,'0'),
+      String(d.getDate()).padStart(2,'0')
+    ].join('-');
+  }
 }
-function invoiceCustomerPrice(){
-  const ci=$('invoiceCustomer').value;
-  const pi=$('invoiceProduct').value;
-  if(ci===''||pi==='')return;
-  const c=customers[Number(ci)],p=products[Number(pi)];
-  const saved=prices.find(x=>String(x.customerId)===String(c.id)&&String(x.productId)===String(p.id));
-  $('invoicePrice').value=saved?saved.price:p.price;
+
+function updateInvoicePrice(){
+  const customerId=$('invoiceCustomer').value;
+  const code=$('invoiceProduct').value;
+
+  if(!customerId||!code){
+    $('invoicePrice').value='';
+    return;
+  }
+
+  const product=products.find(p=>p.code===code);
+  if(!product)return;
+
+  const special=prices.find(x=>
+    String(x.customerId)===String(customerId)&&
+    String(x.code)===String(code)
+  );
+
+  $('invoicePrice').value=special?special.price:product.price;
 }
-$('invoiceCustomer').addEventListener('change',invoiceCustomerPrice);
-$('invoiceProduct').addEventListener('change',invoiceCustomerPrice);
+
+$('invoiceCustomer').addEventListener('change',updateInvoicePrice);
+$('invoiceProduct').addEventListener('change',updateInvoicePrice);
+
+$('productForm').onsubmit=e=>{
+  e.preventDefault();
+
+  const code=$('pcode').value.trim();
+
+  if(products.some(p=>p.code===code)){
+    alert('Product code already exists.');
+    return;
+  }
+
+  const pack=Number($('pack').value);
+  const price=Number($('price').value);
+
+  if(pack<1||!Number.isInteger(pack)||price<0){
+    alert('Enter a valid carton size and price.');
+    return;
+  }
+
+  products.push({code,pack,price});
+  save('mai2_products',products);
+  e.target.reset();
+  draw();
+};
+
+$('customerForm').onsubmit=e=>{
+  e.preventDefault();
+
+  customers.push({
+    id:Date.now().toString(),
+    name:$('cname').value.trim(),
+    phone:$('phone').value.trim(),
+    address:$('address').value.trim(),
+    opening:Number($('opening').value)
+  });
+
+  save('mai2_customers',customers);
+  e.target.reset();
+  $('opening').value='0';
+  draw();
+};
+
+$('savePrice').onclick=()=>{
+  const customerId=$('customerSelect').value;
+  const code=$('productSelect').value;
+  const raw=$('specialPrice').value;
+  const price=Number(raw);
+
+  if(!customerId||!code||raw===''||!Number.isFinite(price)||price<0){
+    alert('Choose a customer and product and enter a valid price.');
+    return;
+  }
+
+  const found=prices.find(x=>
+    String(x.customerId)===String(customerId)&&String(x.code)===String(code)
+  );
+
+  if(found)found.price=price;
+  else prices.push({customerId,code,price});
+
+  save('mai2_prices',prices);
+  $('specialPrice').value='';
+  draw();
+};
+
+function deleteProduct(i){
+  if(confirm('Delete this product?')){
+    products.splice(i,1);
+    save('mai2_products',products);
+    draw();
+  }
+}
+
+function deleteCustomer(i){
+  if(confirm('Delete this customer?')){
+    const id=customers[i].id;
+    customers.splice(i,1);
+    prices=prices.filter(p=>String(p.customerId)!==String(id));
+    save('mai2_customers',customers);
+    save('mai2_prices',prices);
+    draw();
+  }
+}
+
 $('addInvoiceItem').onclick=()=>{
-  const pi=$('invoiceProduct').value;
+  const code=$('invoiceProduct').value;
   const qty=Number($('invoiceQty').value);
-  const price=Number($('invoicePrice').value);
-  if(pi===''||qty<1||!Number.isFinite(price)||price<0){alert('Select a product and enter a valid quantity and price.');return;}
-  const p=products[Number(pi)];
-  const pairs=Number(p.pack)||0;
-  invoiceItems.push({code:p.code,pack:pairs,cartons:qty,pricePerPair:price,totalPairs:qty*pairs,total:qty*pairs*price});
+  const rawPrice=$('invoicePrice').value;
+  const price=Number(rawPrice);
+  const product=products.find(p=>p.code===code);
+
+  if(!product||!Number.isInteger(qty)||qty<1||rawPrice===''||
+     !Number.isFinite(price)||price<0){
+    alert('Select a product and enter a valid carton quantity and price.');
+    return;
+  }
+
+  invoiceItems.push({
+    code:product.code,
+    pack:Number(product.pack),
+    cartons:qty,
+    pricePerPair:price,
+    totalPairs:qty*Number(product.pack),
+    total:qty*Number(product.pack)*price
+  });
+
   invoiceDrawItems();
 };
+
 function invoiceDrawItems(){
-  $('invoiceItems').innerHTML=invoiceItems.length?invoiceItems.map((x,i)=>'<div class="item">'+esc(x.code)+' — '+x.cartons+' cartons × '+x.pack+' pairs; '+money(x.total)+' <button type="button" onclick="invoiceRemoveItem('+i+')">Remove</button></div>').join(''):'<p>No products added yet.</p>';
+  $('invoiceItems').innerHTML=invoiceItems.map((x,i)=>
+    `<div class="item"><b>${esc(x.code)}</b><br>
+    ${x.cartons} cartons × ${x.pack} pairs/carton<br>
+    ${x.totalPairs} pairs × ${money(x.pricePerPair)} per pair<br>
+    <b>${money(x.total)}</b>
+    <button type="button" class="secondary" onclick="removeInvoiceItem(${i})">Remove</button></div>`
+  ).join('')||'<p>No products added yet.</p>';
+
   $('invoiceTotal').textContent=money(invoiceItems.reduce((s,x)=>s+x.total,0));
 }
-function invoiceRemoveItem(i){invoiceItems.splice(i,1);invoiceDrawItems();}
+
+function removeInvoiceItem(i){
+  invoiceItems.splice(i,1);
+  invoiceDrawItems();
+}
+
 $('saveInvoice').onclick=()=>{
-  const ci=$('invoiceCustomer').value;
-  if(ci===''||invoiceItems.length===0){alert('Select a customer and add at least one product.');return;}
-  const number='INV-'+String(Number(localStorage.getItem('mai2_nextInvoice')||1)).padStart(6,'0');
-  const customer=customers[Number(ci)];
-  const inv={number,date:$('invoiceDate').value,customer:{...customer},items:invoiceItems.map(x=>({...x})),total:invoiceItems.reduce((s,x)=>s+x.total,0),createdAt:new Date().toISOString()};
-  invoices.push(inv);
-  save('mai2_invoices',invoices);
-  localStorage.setItem('mai2_nextInvoice',String(Number(localStorage.getItem('mai2_nextInvoice')||1)+1));
+  const customerId=$('invoiceCustomer').value;
+  const customer=customers.find(c=>String(c.id)===String(customerId));
+
+  if(!customer||invoiceItems.length===0){
+    alert('Select a customer and add at least one product.');
+    return;
+  }
+
+  const date=$('invoiceDate').value;
+  if(!date){
+    alert('Select an invoice date.');
+    return;
+  }
+
+  const next=Number(localStorage.getItem('mai2_nextInvoice')||1);
+  const number='INV-'+String(next).padStart(6,'0');
+
+  const invoice={
+    number,
+    date,
+    customer:{...customer},
+    items:invoiceItems.map(x=>({...x})),
+    total:invoiceItems.reduce((s,x)=>s+x.total,0),
+    createdAt:new Date().toISOString()
+  };
+
+  invoices.push(invoice);
+
+  try{
+    save('mai2_invoices',invoices);
+    localStorage.setItem('mai2_nextInvoice',String(next+1));
+  }catch(err){
+    invoices.pop();
+    alert('The invoice could not be saved. Your browser storage may be full.');
+    return;
+  }
+
   $('invoiceNumber').textContent=number;
-  $('invoiceMessage').textContent='Invoice '+number+' saved. Total: '+money(inv.total);
+  $('invoiceMessage').textContent='Invoice '+number+' saved. Total: '+money(invoice.total);
+
   invoiceItems=[];
   invoiceDrawItems();
+  drawSavedInvoices();
 };
-invoiceRefresh(); 
+
+function drawSavedInvoices(){
+  $('savedInvoices').innerHTML=invoices.slice().reverse().map(inv=>
+    `<div class="item"><b>${esc(inv.number)}</b><br>
+    ${esc(inv.date)} · ${esc(inv.customer.name)}<br>
+    Total: ${money(inv.total)}</div>`
+  ).join('')||'<small>No invoices saved yet.</small>';
+}
+
+function exportBackup(){
+  const data={
+    products,customers,prices,invoices,
+    nextInvoice:localStorage.getItem('mai2_nextInvoice')||'1',
+    exportedAt:new Date().toISOString()
+  };
+
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='mai-invoice-backup.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function renderLanguage(){
+  const zh=$('language').value==='zh';
+
+  $('productTitle').textContent=zh?'产品管理':'Products';
+  $('customerTitle').textContent=zh?'客户管理':'Customers';
+  $('priceTitle').textContent=zh?'客户专属价格':'Customer-specific prices';
+  $('invoiceTitle').textContent=zh?'创建发票':'Create Invoice';
+  $('addProduct').textContent=zh?'添加产品':'Add product';
+  $('addCustomer').textContent=zh?'添加客户':'Add customer';
+  $('savePrice').textContent=zh?'保存客户价格':'Save customer price';
+  $('addInvoiceItem').textContent=zh?'添加到发票':'Add to invoice';
+  $('saveInvoice').textContent=zh?'保存发票':'Save invoice';
+}
+
+draw();
 </script>
 </body>
 </html>
