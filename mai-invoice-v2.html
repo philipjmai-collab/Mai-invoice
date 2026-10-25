@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mai Invoice V13</title>
+<title>Mai Invoice V16</title>
 <style>
 *{box-sizing:border-box}
 body{font-family:Arial,sans-serif;margin:0;background:#f3f5f7;color:#222}
@@ -69,7 +69,7 @@ label{display:block;margin-top:10px}
 <hr>
 <h3>Add product</h3>
 <label for="invoiceProduct">Product code</label>
-<select id="invoiceProduct"><option value="">Select product</option></select>
+<input id="invoiceProduct" type="text" list="invoiceProductOptions" placeholder="Type or select a stock code" autocomplete="off"><datalist id="invoiceProductOptions"></datalist>
 <label for="invoiceQty">Number of cartons</label>
 <input type="number" id="invoiceQty" min="1" step="1" value="1">
 <label for="invoicePrice">Price per pair (R)</label>
@@ -299,11 +299,10 @@ function refreshInvoiceChoices(){
   const oldProduct=$('invoiceProduct').value;
   $('invoiceCustomer').innerHTML='<option value="">Select customer</option>'+
     customers.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
-  $('invoiceProduct').innerHTML='<option value="">Select product</option>'+
-    products.map(p=>`<option value="${esc(p.code)}">${esc(p.code)}</option>`).join('');
+  $('invoiceProductOptions').innerHTML=products.map(p=>`<option value="${esc(p.code)}"></option>`).join('');
 
   if(customers.some(c=>String(c.id)===String(oldCustomer)))$('invoiceCustomer').value=oldCustomer;
-  if(products.some(p=>p.code===oldProduct))$('invoiceProduct').value=oldProduct;
+  $('invoiceProduct').value=oldProduct;
   if(!editingInvoiceNumber)updateInvoicePrice();
 
   if(!$('invoiceDate').value){
@@ -316,13 +315,35 @@ function updateInvoicePrice(){
   const customerId=$('invoiceCustomer').value;
   const code=$('invoiceProduct').value;
   if(!customerId||!code){$('invoicePrice').value='';return;}
-  const p=products.find(x=>x.code===code);
+  const p=products.find(x=>String(x.code)===String(code));
   if(!p)return;
   const special=prices.find(x=>String(x.customerId)===String(customerId)&&String(x.code)===String(code));
   $('invoicePrice').value=special?special.price:p.price;
 }
 $('invoiceCustomer').addEventListener('change',()=>{if(!editingInvoiceNumber)updateInvoicePrice();});
-$('invoiceProduct').addEventListener('change',updateInvoicePrice);
+$('invoiceProduct').addEventListener('input',updateInvoicePrice);
+
+function createMissingProduct(code, suggestedPrice=null){
+  const cleanCode=String(code||'').trim();
+  if(!cleanCode)return null;
+  const found=products.find(p=>String(p.code).trim().toLowerCase()===cleanCode.toLowerCase());
+  if(found)return found;
+  if(!confirm('Stock code “'+cleanCode+'” is not in the stock list. Would you like to create it now?'))return null;
+  const packRaw=prompt('Create stock code '+cleanCode+'\nEnter pairs per carton (whole number):','20');
+  if(packRaw===null)return null;
+  const pack=Number(packRaw.trim());
+  if(!Number.isInteger(pack)||pack<1){alert('Pairs per carton must be a whole number greater than zero. Stock code was not created.');return null;}
+  let priceRaw=suggestedPrice===null?'':String(suggestedPrice);
+  priceRaw=prompt('Enter standard price per pair in rand for '+cleanCode+':',priceRaw);
+  if(priceRaw===null)return null;
+  const price=Number(String(priceRaw).replace(/^R\s*/i,'').trim());
+  if(String(priceRaw).trim()===''||!Number.isFinite(price)||price<0){alert('Enter a valid price per pair. Stock code was not created.');return null;}
+  const product={code:cleanCode,pack,price};
+  products.push(product);
+  try{save('mai2_products',products);}catch(err){products.pop();alert('Could not save the new stock code. Browser storage may be full.');return null;}
+  draw();
+  return product;
+}
 
 $('productForm').onsubmit=e=>{
   e.preventDefault();
@@ -373,17 +394,22 @@ function deleteCustomer(i){
 }
 
 $('addInvoiceItem').onclick=()=>{
-  const code=$('invoiceProduct').value,qty=Number($('invoiceQty').value);
+  const code=String($('invoiceProduct').value||'').trim(),qty=Number($('invoiceQty').value);
   const raw=$('invoicePrice').value,price=Number(raw);
-  const p=products.find(x=>x.code===code);
-  if(!p||!Number.isInteger(qty)||qty<1||raw===''||!Number.isFinite(price)||price<0){
-    alert('Select a product and enter a valid carton quantity and price.');return;
+  if(!code||!Number.isInteger(qty)||qty<1||raw===''||!Number.isFinite(price)||price<0){
+    alert('Enter a stock code, valid carton quantity and price per pair.');return;
+  }
+  let p=products.find(x=>String(x.code)===code);
+  if(!p){
+    p=createMissingProduct(code,price);
+    if(!p)return;
   }
   invoiceItems.push({
     code:p.code,pack:Number(p.pack),cartons:qty,pricePerPair:price,
     totalPairs:qty*Number(p.pack),total:qty*Number(p.pack)*price
   });
-  invoiceDrawItems();
+  $('invoiceProduct').value='';$('invoiceQty').value='1';$('invoicePrice').value='';
+  invoiceDrawItems();updateInvoicePrice();
 };
 
 function invoiceDrawItems(){
@@ -895,10 +921,13 @@ $('usePhotoOrder').onclick=()=>{
     const code=String($('photoCode'+i)?.value||'').trim();
     const qtyRaw=$('photoQty'+i)?.value||'';
     const cartons=Number(qtyRaw);
-    const product=products.find(p=>String(p.code)===String(code));
-    if(!product){alert('Please enter a stock code that exists in Products for every line, or remove the line.');return;}
     if(qtyRaw===''||!Number.isInteger(cartons)||cartons<1){alert('Please correct the carton quantity on every line.');return;}
-    const price=getCustomerPrice(customerId,code);
+    let product=products.find(p=>String(p.code)===String(code));
+    if(!product){
+      product=createMissingProduct(code,null);
+      if(!product){alert('Order import cancelled or stock code was not created. No order was loaded.');return;}
+    }
+    const price=getCustomerPrice(customerId,product.code);
     items.push({code:product.code,pack:Number(product.pack),cartons,pricePerPair:price,totalPairs:cartons*Number(product.pack),total:cartons*Number(product.pack)*price});
   }
   if(!items.length){alert('Add at least one valid product line.');return;}
