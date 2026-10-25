@@ -81,20 +81,19 @@ label{display:block;margin-top:10px}
 <p id="invoiceMessage" role="status"></p>
 </section>
 
-<section class="card" id="photoImportCard">
-<h2>Add Invoice from Photo</h2>
-<p>Upload a customer order photo or screenshot. The app will try to read product codes and carton quantities. Check every line before adding it to the invoice.</p>
+<section class="card" id="qrImportCard">
+<h2>Import Order from QR Code</h2>
+<p>Send an order photo to ChatGPT to extract the stock codes and carton quantities and generate a Mai Invoice order QR code. Upload that QR image here, review every line, then load it into an invoice.</p>
 <label for="photoCustomer">Customer for this order</label>
 <select id="photoCustomer"><option value="">Select customer</option></select>
-<label for="orderPhoto">Order photo or screenshot</label>
-<input id="orderPhoto" type="file" accept="image/*">
-<img id="orderPhotoPreview" class="photo-preview" alt="Order photo preview" hidden>
-<button type="button" id="readOrderPhoto">Read photo</button>
-<p id="photoOcrStatus" class="photo-status" role="status">Choose a customer and upload a clear photo to begin.</p>
+<label for="orderQrImage">Order QR code image</label>
+<input id="orderQrImage" type="file" accept="image/*">
+<img id="orderQrPreview" class="photo-preview" alt="Order QR code preview" hidden>
+<button type="button" id="readOrderQr">Read QR code</button>
+<p id="photoOcrStatus" class="photo-status" role="status">Choose a customer and upload the QR code generated for your order.</p>
 <div id="photoOrderRows"></div>
 <button type="button" id="usePhotoOrder" hidden>Use reviewed items in invoice</button>
 </section>
-
 <section class="card" id="stockImportCard">
 <h2>Import Stock Codes from Excel</h2>
 <p>Upload the Mai Invoice Stock Code Import Template (.xlsx) or a CSV with the same three columns. Review the preview before importing. Existing product codes can optionally be updated; customer-specific prices will always remain unchanged.</p>
@@ -178,8 +177,8 @@ label{display:block;margin-top:10px}
 </section>
 </main>
 
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const load=(key,def=[])=>{
@@ -722,167 +721,86 @@ function exportInvoiceExcel(number){
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
-/* Photo order import: OCR is a helper, and all extracted lines must be reviewed. */
+/* QR order import: the QR contains structured order data generated from a reviewed photo extraction. */
 let photoCandidates=[];
-let selectedOrderPhoto=null;
+let selectedOrderQr=null;
 
-$('orderPhoto').addEventListener('change',()=>{
-  const file=$('orderPhoto').files?.[0];
-  selectedOrderPhoto=file||null;
+$('orderQrImage').addEventListener('change',()=>{
+  const file=$('orderQrImage').files?.[0];
+  selectedOrderQr=file||null;
   photoCandidates=[];
   $('photoOrderRows').innerHTML='';
   $('usePhotoOrder').hidden=true;
-  if(!file){$('orderPhotoPreview').hidden=true;return;}
+  if(!file){$('orderQrPreview').hidden=true;return;}
   if(!file.type.startsWith('image/')){
-    $('photoOcrStatus').textContent='Please choose an image file.';
-    $('orderPhoto').value='';selectedOrderPhoto=null;return;
+    $('photoOcrStatus').textContent='Please choose a QR code image.';
+    $('orderQrImage').value='';selectedOrderQr=null;return;
   }
   const previewUrl=URL.createObjectURL(file);
-  $('orderPhotoPreview').src=previewUrl;
-  $('orderPhotoPreview').hidden=false;
-  $('photoOcrStatus').textContent='Photo selected. Tap “Read photo” to recognize text.';
+  $('orderQrPreview').src=previewUrl;
+  $('orderQrPreview').hidden=false;
+  $('photoOcrStatus').textContent='QR image selected. Tap “Read QR code” to import its order data.';
 });
 
-/* Improve handwritten-order recognition by enlarging the image and making a high-contrast grayscale copy. */
-function preparePhotoForOCR(file){
+function decodeQrImage(file){
   return new Promise((resolve,reject)=>{
     const image=new Image();
     const url=URL.createObjectURL(file);
     image.onload=()=>{
       try{
-        const maxSide=2400;
-        const scale=Math.min(2.5,maxSide/Math.max(image.naturalWidth,image.naturalHeight));
         const canvas=document.createElement('canvas');
-        canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));
-        canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+        canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
         const ctx=canvas.getContext('2d',{willReadFrequently:true});
-        ctx.drawImage(image,0,0,canvas.width,canvas.height);
-        const frame=ctx.getImageData(0,0,canvas.width,canvas.height);
-        const px=frame.data;
-        for(let i=0;i<px.length;i+=4){
-          let gray=0.299*px[i]+0.587*px[i+1]+0.114*px[i+2];
-          gray=(gray-128)*1.55+128;
-          gray=Math.max(0,Math.min(255,gray));
-          px[i]=px[i+1]=px[i+2]=gray;
-        }
-        ctx.putImageData(frame,0,0);
+        ctx.drawImage(image,0,0);
+        const imageData=ctx.getImageData(0,0,canvas.width,canvas.height);
+        if(!window.jsQR){URL.revokeObjectURL(url);reject(new Error('QR reader library did not load.'));return;}
+        const result=window.jsQR(imageData.data,imageData.width,imageData.height,{inversionAttempts:'attemptBoth'});
         URL.revokeObjectURL(url);
-        resolve(canvas);
+        if(!result?.data)reject(new Error('No QR code was found. Use the original QR image, not a screenshot of a screenshot.'));
+        else resolve(result.data);
       }catch(err){URL.revokeObjectURL(url);reject(err);}
     };
-    image.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Could not load image'));};
+    image.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Could not open the image.'));};
     image.src=url;
   });
 }
 
-$('readOrderPhoto').onclick=async()=>{
-  const file=$('orderPhoto').files?.[0];
-  const customerId=$('photoCustomer').value;
-  if(!file){alert('Please upload an order photo first.');return;}
-  if(!customerId){alert('Please select the customer first so the app can apply the correct prices.');return;}
-  if(!window.Tesseract||!window.Tesseract.recognize){
-    $('photoOcrStatus').textContent='Text recognition could not load. Connect to the internet, refresh the app, and try again.';
-    return;
+function validateQrOrder(raw){
+  let data;
+  try{data=JSON.parse(raw);}catch(e){throw new Error('The QR code does not contain valid Mai Invoice order data.');}
+  if(!data||data.format!=='mai-invoice-order'||!Array.isArray(data.items)||!data.items.length){
+    throw new Error('This QR code is not a supported Mai Invoice order QR code.');
   }
-  $('readOrderPhoto').disabled=true;
-  $('photoOcrStatus').textContent='Enhancing the photo and reading handwritten text. This may take a little while…';
-  $('photoOrderRows').innerHTML='';
-  $('usePhotoOrder').hidden=true;
+  const merged=new Map();
+  for(const item of data.items){
+    const code=String(item.code??'').trim();
+    const cartons=Number(item.quantity??item.cartons);
+    if(!code||!Number.isInteger(cartons)||cartons<1)throw new Error('The QR contains a missing stock code or invalid carton quantity.');
+    merged.set(code,(merged.get(code)||0)+cartons);
+  }
+  return [...merged.entries()].map(([code,cartons])=>({
+    code,cartons,raw:'Imported from QR code',uncertain:!products.some(p=>String(p.code)===code)
+  }));
+}
+
+$('readOrderQr').onclick=async()=>{
+  const file=$('orderQrImage').files?.[0];
+  const customerId=$('photoCustomer').value;
+  if(!file){alert('Please upload the order QR code image first.');return;}
+  if(!customerId){alert('Please select the customer first so the app can apply the correct prices.');return;}
+  $('readOrderQr').disabled=true;
+  $('photoOcrStatus').textContent='Reading QR code and checking the order data…';
+  $('photoOrderRows').innerHTML='';$('usePhotoOrder').hidden=true;
   try{
-    const enhanced=await preparePhotoForOCR(file);
-    const result=await Tesseract.recognize(enhanced,'eng',{
-      logger:m=>{
-        if(m.status==='recognizing text'&&typeof m.progress==='number'){
-          $('photoOcrStatus').textContent='Reading enhanced photo: '+Math.round(m.progress*100)+'%';
-        }
-      },
-      tessedit_pageseg_mode: 11,
-      preserve_interword_spaces: 1
-    });
-    const text=result?.data?.text||'';
-    photoCandidates=parsePhotoOrderText(text);
-    if(!photoCandidates.length){
-      const suggestion=guessProductFromOCR(text);
-      $('photoOcrStatus').textContent=suggestion
-        ?'OCR could not read the full line clearly. A possible catalogue match is suggested below—please confirm the code and quantity.'
-        :'OCR could not confidently match the handwriting to your catalogue. Select the correct product code and enter the carton quantity below.';
-      photoCandidates=[{code:suggestion||'',cartons:1,raw:text.split(/\r?\n/).filter(Boolean).slice(0,5).join(' | ')||'No readable text detected',uncertain:true}];
-    }else{
-      $('photoOcrStatus').textContent='Recognition finished. Review every product code and carton quantity before continuing.';
-    }
+    const raw=await decodeQrImage(file);
+    photoCandidates=validateQrOrder(raw);
+    $('photoOcrStatus').textContent='QR read successfully. Review stock codes and carton quantities before loading the order.';
     renderPhotoCandidates();
   }catch(err){
-    $('photoOcrStatus').textContent='Could not read this photo. Try a closer, brighter image or enter the order manually.';
-    photoCandidates=[{code:'',cartons:1,raw:'Photo could not be read. Choose the product code and enter cartons manually.',uncertain:true}];
-    renderPhotoCandidates();
-  }finally{
-    $('readOrderPhoto').disabled=false;
-  }
+    photoCandidates=[];
+    $('photoOcrStatus').textContent=err?.message||'Could not read this QR code. Try uploading the original QR image.';
+  }finally{$('readOrderQr').disabled=false;}
 };
-
-function normalizeCodeText(value){return String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');}
-function editDistance(a,b){
-  const row=Array.from({length:b.length+1},(_,i)=>i);
-  for(let i=1;i<=a.length;i++){
-    let prev=row[0];row[0]=i;
-    for(let j=1;j<=b.length;j++){
-      const old=row[j];
-      row[j]=Math.min(row[j]+1,row[j-1]+1,prev+(a[i-1]===b[j-1]?0:1));
-      prev=old;
-    }
-  }
-  return row[b.length];
-}
-function guessProductFromOCR(text){
-  const raw=normalizeCodeText(text);
-  if(!raw||!products.length)return '';
-  let best=null,bestScore=Infinity;
-  for(const p of products){
-    const code=normalizeCodeText(p.code);
-    if(!code)continue;
-    let score=Infinity;
-    if(raw.includes(code))score=0;
-    else{
-      for(let i=0;i<=raw.length-code.length+1;i++){
-        const chunk=raw.slice(i,Math.min(raw.length,i+code.length+1));
-        score=Math.min(score,editDistance(chunk,code));
-      }
-    }
-    if(score<bestScore){bestScore=score;best=p;}
-  }
-  return best&&bestScore<=1?String(best.code):'';
-}
-
-function parsePhotoOrderText(text){
-  const lines=String(text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
-  const found=[];
-  const orderedProducts=products.slice().sort((a,b)=>String(b.code).length-String(a.code).length);
-  for(const line of lines){
-    const normalized=line.replace(/[×xX]/g,' ').replace(/[,:;|]/g,' ');
-    let matched=null,matchIndex=-1;
-    for(const product of orderedProducts){
-      const code=String(product.code).trim();
-      if(!code)continue;
-      const escaped=code.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-      const re=new RegExp('(^|[^A-Za-z0-9])('+escaped+')(?=$|[^A-Za-z0-9])','i');
-      const m=re.exec(normalized);
-      if(m){matched=product;matchIndex=m.index+m[1].length;break;}
-    }
-    if(!matched)continue;
-    const code=String(matched.code);
-    const afterCode=normalized.slice(matchIndex+code.length);
-    const beforeCode=normalized.slice(0,matchIndex);
-    const numsAfter=[...afterCode.matchAll(/\b\d+\b/g)].map(m=>Number(m[0]));
-    const numsBefore=[...beforeCode.matchAll(/\b\d+\b/g)].map(m=>Number(m[0]));
-    let cartons=numsAfter.length?numsAfter[0]:(numsBefore.length?numsBefore[numsBefore.length-1]:1);
-    let uncertain=!(numsAfter.length||numsBefore.length)||!Number.isInteger(cartons)||cartons<1;
-    if(!Number.isInteger(cartons)||cartons<1)cartons=1;
-    const existing=found.find(x=>x.code===code);
-    if(existing){existing.cartons+=cartons;existing.raw+=' | '+line;existing.uncertain=true;}
-    else found.push({code,cartons,raw:line,uncertain});
-  }
-  return found;
-}
 
 function renderPhotoCandidates(){
   const customerId=$('photoCustomer').value;
@@ -931,21 +849,21 @@ $('usePhotoOrder').onclick=()=>{
   }
   if(!items.length){alert('Add at least one valid product line.');return;}
   if(editingInvoiceNumber){
-    if(!confirm('You are currently editing a saved invoice. Discard those unsaved changes and start a new invoice from this photo?'))return;
+    if(!confirm('You are currently editing a saved invoice. Discard those unsaved changes and start a new invoice from this QR order?'))return;
     resetInvoiceForm();
   }else if(invoiceItems.length){
-    if(!confirm('Replace the products currently in the new invoice with the reviewed photo order?'))return;
+    if(!confirm('Replace the products currently in the new invoice with the reviewed QR order?'))return;
   }
   editingInvoiceNumber=null;
   $('invoiceCustomer').value=String(customer.id);
   $('invoiceDate').value=new Date().toISOString().slice(0,10);
-  $('invoiceTitle').textContent='Create Invoice from Photo';
+  $('invoiceTitle').textContent='Create Invoice from QR Order';
   $('invoiceNumber').textContent='Assigned when saved';
   $('saveInvoice').textContent='Save invoice';
   $('cancelEdit').hidden=true;$('editingNotice').hidden=true;
   invoiceItems=items;
   invoiceDrawItems();
-  $('invoiceMessage').textContent='Photo order loaded for review. Check all items, then press Save invoice.';
+  $('invoiceMessage').textContent='QR order loaded for review. Check all items, then press Save invoice.';
   $('invoiceFormCard').scrollIntoView({behavior:'smooth',block:'start'});
 };
 
