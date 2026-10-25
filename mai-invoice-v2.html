@@ -102,6 +102,19 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:Arial,sans-serif}
 
 <section class="card">
 <h2>Saved invoices</h2>
+
+<label for="searchInvoice">Search invoice number or customer</label>
+<input id="searchInvoice" type="search" placeholder="e.g. INV-000001 or customer name">
+
+<label for="searchStart">From date</label>
+<input id="searchStart" type="date">
+
+<label for="searchEnd">To date</label>
+<input id="searchEnd" type="date">
+
+<button type="button" class="secondary" onclick="clearInvoiceSearch()">Clear search</button>
+
+<p id="searchResultCount" aria-live="polite"></p>
 <div id="savedInvoices"><small>No invoices saved yet.</small></div>
 </section>
 
@@ -119,12 +132,14 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:Arial,sans-serif}
 
 <script>
 const $=id=>document.getElementById(id);
+
 const load=(key,def=[])=>{
   try{
     const value=JSON.parse(localStorage.getItem(key));
     return value===null?def:value;
   }catch(e){return def}
 };
+
 const save=(key,val)=>localStorage.setItem(key,JSON.stringify(val));
 const money=n=>'R'+Number(n||0).toFixed(2);
 
@@ -389,15 +404,49 @@ $('saveInvoice').onclick=()=>{
 };
 
 function drawSavedInvoices(){
-  $('savedInvoices').innerHTML=invoices.slice().reverse().map(inv=>
+  const query=$('searchInvoice').value.trim().toLowerCase();
+  const start=$('searchStart').value;
+  const end=$('searchEnd').value;
+
+  if(start&&end&&start>end){
+    $('searchResultCount').textContent='The start date must be before or equal to the end date.';
+    $('savedInvoices').innerHTML='<small>Please correct the date range.</small>';
+    return;
+  }
+
+  const filtered=invoices.filter(inv=>{
+    const number=String(inv.number||'').toLowerCase();
+    const name=String(inv.customer?.name||'').toLowerCase();
+    const matchesText=!query||number.includes(query)||name.includes(query);
+    const date=String(inv.date||'');
+    const matchesStart=!start||date>=start;
+    const matchesEnd=!end||date<=end;
+    return matchesText&&matchesStart&&matchesEnd;
+  });
+
+  $('searchResultCount').textContent=
+    `Showing ${filtered.length} of ${invoices.length} invoice(s).`;
+
+  $('savedInvoices').innerHTML=filtered.slice().reverse().map(inv=>
     `<div class="item">
       <b>${esc(inv.number)}</b><br>
-      ${esc(inv.date)} · ${esc(inv.customer.name)}<br>
+      ${esc(inv.date)} · ${esc(inv.customer?.name||'')}<br>
       Total: ${money(inv.total)}
       <button type="button" onclick="viewInvoice('${esc(inv.number)}')">View invoice</button>
     </div>`
-  ).join('')||'<small>No invoices saved yet.</small>';
+  ).join('')||'<small>No matching invoices found.</small>';
 }
+
+function clearInvoiceSearch(){
+  $('searchInvoice').value='';
+  $('searchStart').value='';
+  $('searchEnd').value='';
+  drawSavedInvoices();
+}
+
+$('searchInvoice').addEventListener('input',drawSavedInvoices);
+$('searchStart').addEventListener('change',drawSavedInvoices);
+$('searchEnd').addEventListener('change',drawSavedInvoices);
 
 function viewInvoice(number){
   const inv=invoices.find(x=>x.number===number);
