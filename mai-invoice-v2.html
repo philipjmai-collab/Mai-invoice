@@ -110,6 +110,9 @@ label{display:block;margin-top:10px}
 <section class="card">
 <h2 id="productTitle">Products</h2>
 <button type="button" class="secondary" id="toggleProductsList" onclick="toggleProductsList()">Hide stock codes</button>
+<label for="stockCodeSearch">Search stock code</label>
+<input id="stockCodeSearch" type="search" placeholder="Type a full or partial stock code, e.g. 6631m">
+<p id="stockCodeSearchStatus" aria-live="polite"><small>Search your product catalogue by stock code.</small></p>
 <form id="productForm">
 <label for="pcode">Product code</label>
 <input id="pcode" placeholder="Product code" required>
@@ -217,16 +220,31 @@ function formatTimestamp(t){
   return Number.isNaN(d.getTime())?String(t):d.toLocaleString();
 }
 
-function applyProductsListVisibility(){
-  const hidden=localStorage.getItem('mai2_hideProductsList')==='1';
-  $('products').hidden=hidden;
-  $('toggleProductsList').textContent=hidden?'Show stock codes':'Hide stock codes';
+function renderProductsList(){
+  const query=($('stockCodeSearch')?.value||'').trim().toLowerCase();
+  const matches=products.map((p,i)=>({p,i})).filter(({p})=>!query||String(p.code||'').toLowerCase().includes(query));
+  $('products').innerHTML=matches.map(({p,i})=>
+    `<div class="item"><b>${esc(p.code)}</b><br>
+    <small>${p.pack} pairs/carton · ${money(p.price)}/pair · ${money(p.pack*p.price)}/carton</small>
+    <button class="secondary" type="button" onclick="deleteProduct(${i})">Delete</button></div>`
+  ).join('')||(query?'<small>No stock codes match your search.</small>':'<small>No products yet.</small>');
+  if($('stockCodeSearchStatus')){
+    $('stockCodeSearchStatus').innerHTML=query
+      ?`<small>${matches.length} matching product(s) found.</small>`
+      :'<small>Search your product catalogue by stock code.</small>';
+  }
+  const savedHidden=localStorage.getItem('mai2_hideProductsList')==='1';
+  /* Searching temporarily reveals matching results, even if the list is normally hidden. */
+  $('products').hidden=savedHidden&&!query;
+  $('toggleProductsList').textContent=savedHidden&&!query?'Show stock codes':'Hide stock codes';
 }
+function applyProductsListVisibility(){renderProductsList();}
 function toggleProductsList(){
   const hidden=localStorage.getItem('mai2_hideProductsList')==='1';
   localStorage.setItem('mai2_hideProductsList',hidden?'0':'1');
   applyProductsListVisibility();
 }
+$('stockCodeSearch').addEventListener('input',renderProductsList);
 
 function draw(){
   const previousPhotoCustomer=$('photoCustomer')?.value||'';
@@ -234,12 +252,7 @@ function draw(){
     $('photoCustomer').innerHTML='<option value="">Select customer</option>'+customers.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
     if(customers.some(c=>String(c.id)===String(previousPhotoCustomer)))$('photoCustomer').value=previousPhotoCustomer;
   }
-  $('products').innerHTML=products.map((p,i)=>
-    `<div class="item"><b>${esc(p.code)}</b><br>
-    <small>${p.pack} pairs/carton · ${money(p.price)}/pair · ${money(p.pack*p.price)}/carton</small>
-    <button class="secondary" type="button" onclick="deleteProduct(${i})">Delete</button></div>`
-  ).join('')||'<small>No products yet.</small>';
-  applyProductsListVisibility();
+  renderProductsList();
 
   $('customers').innerHTML=customers.map((c,i)=>
     `<div class="item"><b>${esc(c.name)}</b><br>
