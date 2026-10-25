@@ -30,6 +30,12 @@ label{display:block;margin-top:10px}
 .print-business{margin-bottom:20px}
 .print-meta p{margin:6px 0}
 .no-print{}
+.photo-preview{max-width:100%;max-height:260px;display:block;margin:10px 0;border-radius:8px}
+.photo-row{border:1px solid #ddd;border-radius:8px;padding:12px;margin:10px 0;background:#fff}
+.photo-row .row-grid{display:grid;grid-template-columns:1fr 110px;gap:8px;align-items:end}
+.photo-row .row-grid label{margin-top:4px}
+.photo-status{font-size:13px;color:#555}
+@media(max-width:480px){.photo-row .row-grid{grid-template-columns:1fr 90px}}
 </style>
 </head>
 <body>
@@ -67,6 +73,20 @@ label{display:block;margin-top:10px}
 <button type="button" id="saveInvoice">Save invoice</button>
 <button type="button" class="secondary" id="cancelEdit" onclick="cancelInvoiceEdit()" hidden>Cancel editing</button>
 <p id="invoiceMessage" role="status"></p>
+</section>
+
+<section class="card" id="photoImportCard">
+<h2>Add Invoice from Photo</h2>
+<p>Upload a customer order photo or screenshot. The app will try to read product codes and carton quantities. Check every line before adding it to the invoice.</p>
+<label for="photoCustomer">Customer for this order</label>
+<select id="photoCustomer"><option value="">Select customer</option></select>
+<label for="orderPhoto">Order photo or screenshot</label>
+<input id="orderPhoto" type="file" accept="image/*">
+<img id="orderPhotoPreview" class="photo-preview" alt="Order photo preview" hidden>
+<button type="button" id="readOrderPhoto">Read photo</button>
+<p id="photoOcrStatus" class="photo-status" role="status">Choose a customer and upload a clear photo to begin.</p>
+<div id="photoOrderRows"></div>
+<button type="button" id="usePhotoOrder" hidden>Use reviewed items in invoice</button>
 </section>
 
 <section class="card">
@@ -136,6 +156,7 @@ label{display:block;margin-top:10px}
 </section>
 </main>
 
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const load=(key,def=[])=>{
@@ -177,6 +198,11 @@ function formatTimestamp(t){
 }
 
 function draw(){
+  const previousPhotoCustomer=$('photoCustomer')?.value||'';
+  if($('photoCustomer')){
+    $('photoCustomer').innerHTML='<option value="">Select customer</option>'+customers.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+    if(customers.some(c=>String(c.id)===String(previousPhotoCustomer)))$('photoCustomer').value=previousPhotoCustomer;
+  }
   $('products').innerHTML=products.map((p,i)=>
     `<div class="item"><b>${esc(p.code)}</b><br>
     <small>${p.pack} pairs/carton · ${money(p.price)}/pair · ${money(p.pack*p.price)}/carton</small>
@@ -650,6 +676,160 @@ function exportInvoiceExcel(number){
   a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
+
+/* Photo order import: OCR is a helper, and all extracted lines must be reviewed. */
+let photoCandidates=[];
+let selectedOrderPhoto=null;
+
+$('orderPhoto').addEventListener('change',()=>{
+  const file=$('orderPhoto').files?.[0];
+  selectedOrderPhoto=file||null;
+  photoCandidates=[];
+  $('photoOrderRows').innerHTML='';
+  $('usePhotoOrder').hidden=true;
+  if(!file){$('orderPhotoPreview').hidden=true;return;}
+  if(!file.type.startsWith('image/')){
+    $('photoOcrStatus').textContent='Please choose an image file.';
+    $('orderPhoto').value='';selectedOrderPhoto=null;return;
+  }
+  const previewUrl=URL.createObjectURL(file);
+  $('orderPhotoPreview').src=previewUrl;
+  $('orderPhotoPreview').hidden=false;
+  $('photoOcrStatus').textContent='Photo selected. Tap “Read photo” to recognize text.';
+});
+
+$('readOrderPhoto').onclick=async()=>{
+  const file=$('orderPhoto').files?.[0];
+  const customerId=$('photoCustomer').value;
+  if(!file){alert('Please upload an order photo first.');return;}
+  if(!customerId){alert('Please select the customer first so the app can apply the correct prices.');return;}
+  if(!window.Tesseract||!window.Tesseract.recognize){
+    $('photoOcrStatus').textContent='Text recognition could not load. Connect to the internet, refresh the app, and try again.';
+    return;
+  }
+  $('readOrderPhoto').disabled=true;
+  $('photoOcrStatus').textContent='Reading the photo. This may take a little while…';
+  $('photoOrderRows').innerHTML='';
+  $('usePhotoOrder').hidden=true;
+  try{
+    const result=await Tesseract.recognize(file,'eng',{
+      logger:m=>{
+        if(m.status==='recognizing text'&&typeof m.progress==='number'){
+          $('photoOcrStatus').textContent='Reading photo: '+Math.round(m.progress*100)+'%';
+        }
+      }
+    });
+    const text=result?.data?.text||'';
+    photoCandidates=parsePhotoOrderText(text);
+    if(!photoCandidates.length){
+      $('photoOcrStatus').textContent='No product lines were matched automatically. You can add lines manually below.';
+      photoCandidates=[{code:'',cartons:1,raw:text.split(/\r?\n/).filter(Boolean).slice(0,5).join(' | '),uncertain:true}];
+    }else{
+      $('photoOcrStatus').textContent='Recognition finished. Review every product code and carton quantity before continuing.';
+    }
+    renderPhotoCandidates();
+  }catch(err){
+    $('photoOcrStatus').textContent='Could not read this photo. Try a clearer, brighter image or enter the order manually.';
+  }finally{
+    $('readOrderPhoto').disabled=false;
+  }
+};
+
+function parsePhotoOrderText(text){
+  const lines=String(text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+  const found=[];
+  const orderedProducts=products.slice().sort((a,b)=>String(b.code).length-String(a.code).length);
+  for(const line of lines){
+    const normalized=line.replace(/[×xX]/g,' ').replace(/[,:;|]/g,' ');
+    let matched=null,matchIndex=-1;
+    for(const product of orderedProducts){
+      const code=String(product.code).trim();
+      if(!code)continue;
+      const escaped=code.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const re=new RegExp('(^|[^A-Za-z0-9])('+escaped+')(?=$|[^A-Za-z0-9])','i');
+      const m=re.exec(normalized);
+      if(m){matched=product;matchIndex=m.index+m[1].length;break;}
+    }
+    if(!matched)continue;
+    const code=String(matched.code);
+    const afterCode=normalized.slice(matchIndex+code.length);
+    const beforeCode=normalized.slice(0,matchIndex);
+    const numsAfter=[...afterCode.matchAll(/\b\d+\b/g)].map(m=>Number(m[0]));
+    const numsBefore=[...beforeCode.matchAll(/\b\d+\b/g)].map(m=>Number(m[0]));
+    let cartons=numsAfter.length?numsAfter[0]:(numsBefore.length?numsBefore[numsBefore.length-1]:1);
+    let uncertain=!(numsAfter.length||numsBefore.length)||!Number.isInteger(cartons)||cartons<1;
+    if(!Number.isInteger(cartons)||cartons<1)cartons=1;
+    const existing=found.find(x=>x.code===code);
+    if(existing){existing.cartons+=cartons;existing.raw+=' | '+line;existing.uncertain=true;}
+    else found.push({code,cartons,raw:line,uncertain});
+  }
+  return found;
+}
+
+function renderPhotoCandidates(){
+  const customerId=$('photoCustomer').value;
+  $('photoOrderRows').innerHTML=photoCandidates.map((item,i)=>{
+    const matchedProduct=products.find(p=>String(p.code)===String(item.code));
+    const status=matchedProduct?(item.uncertain?'Check quantity':'Product matched'):'Choose a product code';
+    const options='<option value="">Select product code</option>'+products.map(p=>`<option value="${esc(p.code)}" ${String(p.code)===String(item.code)?'selected':''}>${esc(p.code)}</option>`).join('');
+    return `<div class="photo-row" data-photo-row="${i}">
+      <p><b>Detected text:</b> ${esc(item.raw||'(manual line)')}</p>
+      <div class="row-grid">
+        <div><label for="photoCode${i}">Product code</label><select id="photoCode${i}">${options}</select></div>
+        <div><label for="photoQty${i}">Cartons</label><input id="photoQty${i}" type="number" min="1" step="1" value="${Number(item.cartons)||1}"></div>
+      </div>
+      <p class="photo-status">${status}${matchedProduct?' · '+matchedProduct.pack+' pairs/carton · '+money(getCustomerPrice(customerId,matchedProduct.code))+'/pair':''}</p>
+      <button type="button" class="secondary" onclick="removePhotoCandidate(${i})">Remove line</button>
+    </div>`;
+  }).join('');
+  $('usePhotoOrder').hidden=!photoCandidates.length;
+}
+
+function getCustomerPrice(customerId,code){
+  const special=prices.find(x=>String(x.customerId)===String(customerId)&&String(x.code)===String(code));
+  const product=products.find(x=>String(x.code)===String(code));
+  return special?Number(special.price):Number(product?.price||0);
+}
+function removePhotoCandidate(i){photoCandidates.splice(i,1);renderPhotoCandidates();}
+
+$('photoCustomer').addEventListener('change',()=>{
+  if(photoCandidates.length)renderPhotoCandidates();
+});
+
+$('usePhotoOrder').onclick=()=>{
+  const customerId=$('photoCustomer').value;
+  const customer=customers.find(c=>String(c.id)===String(customerId));
+  if(!customer){alert('Select a customer first.');return;}
+  const items=[];
+  for(let i=0;i<photoCandidates.length;i++){
+    const code=$('photoCode'+i)?.value||'';
+    const qtyRaw=$('photoQty'+i)?.value||'';
+    const cartons=Number(qtyRaw);
+    const product=products.find(p=>String(p.code)===String(code));
+    if(!product){alert('Please select a valid product code for every line, or remove the line.');return;}
+    if(qtyRaw===''||!Number.isInteger(cartons)||cartons<1){alert('Please correct the carton quantity on every line.');return;}
+    const price=getCustomerPrice(customerId,code);
+    items.push({code:product.code,pack:Number(product.pack),cartons,pricePerPair:price,totalPairs:cartons*Number(product.pack),total:cartons*Number(product.pack)*price});
+  }
+  if(!items.length){alert('Add at least one valid product line.');return;}
+  if(editingInvoiceNumber){
+    if(!confirm('You are currently editing a saved invoice. Discard those unsaved changes and start a new invoice from this photo?'))return;
+    resetInvoiceForm();
+  }else if(invoiceItems.length){
+    if(!confirm('Replace the products currently in the new invoice with the reviewed photo order?'))return;
+  }
+  editingInvoiceNumber=null;
+  $('invoiceCustomer').value=String(customer.id);
+  $('invoiceDate').value=new Date().toISOString().slice(0,10);
+  $('invoiceTitle').textContent='Create Invoice from Photo';
+  $('invoiceNumber').textContent='Assigned when saved';
+  $('saveInvoice').textContent='Save invoice';
+  $('cancelEdit').hidden=true;$('editingNotice').hidden=true;
+  invoiceItems=items;
+  invoiceDrawItems();
+  $('invoiceMessage').textContent='Photo order loaded for review. Check all items, then press Save invoice.';
+  $('invoiceFormCard').scrollIntoView({behavior:'smooth',block:'start'});
+};
 
 function exportBackup(){
   const data={
