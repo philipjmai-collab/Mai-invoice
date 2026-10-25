@@ -14,13 +14,11 @@ main{max-width:750px;margin:auto;padding:14px}
 input,select,button{width:100%;padding:12px;margin:5px 0;border:1px solid #ccc;border-radius:7px;font-size:16px}
 button{background:#173b32;color:white;border:0;font-weight:bold}
 .secondary{background:#e8eeeb;color:#173b32}
-.danger{background:#9b2828;color:white}
 .item{border-bottom:1px solid #ddd;padding:10px 0;overflow-wrap:anywhere}
 small{color:#666}
 h2{font-size:19px}
 label{display:block;margin-top:10px}
 .total{font-size:20px;font-weight:bold}
-pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:Arial,sans-serif}
 .history-entry{background:#f3f5f7;padding:12px;border-radius:8px;margin:10px 0}
 .status{font-weight:bold;color:#173b32}
 </style>
@@ -46,23 +44,17 @@ You are editing an existing invoice. Its invoice number will not change.
 </p>
 
 <label for="invoiceCustomer">Customer</label>
-<select id="invoiceCustomer">
-<option value="">Select customer</option>
-</select>
+<select id="invoiceCustomer"><option value="">Select customer</option></select>
 
 <label for="invoiceDate">Invoice date</label>
 <input type="date" id="invoiceDate">
 
 <p>Invoice number: <b id="invoiceNumber">Assigned when saved</b></p>
-
 <hr>
 
 <h3>Add product</h3>
-
 <label for="invoiceProduct">Product code</label>
-<select id="invoiceProduct">
-<option value="">Select product</option>
-</select>
+<select id="invoiceProduct"><option value="">Select product</option></select>
 
 <label for="invoiceQty">Number of cartons</label>
 <input type="number" id="invoiceQty" min="1" step="1" value="1">
@@ -70,109 +62,81 @@ You are editing an existing invoice. Its invoice number will not change.
 <label for="invoicePrice">Price per pair (R)</label>
 <input type="number" id="invoicePrice" min="0" step="0.01">
 
-<p><small>Customer-specific prices are applied automatically when selecting a product. Existing invoice line prices are preserved when editing.</small></p>
+<p><small>Customer-specific prices are applied automatically when selecting a product.</small></p>
 
 <button type="button" id="addInvoiceItem">Add to invoice</button>
-
-<div id="invoiceItems">
-<p>No products added yet.</p>
-</div>
+<div id="invoiceItems"><p>No products added yet.</p></div>
 
 <p class="total">Invoice total: <span id="invoiceTotal">R0.00</span></p>
-
 <button type="button" id="saveInvoice">Save invoice</button>
 <button type="button" class="secondary" id="cancelEdit" onclick="cancelInvoiceEdit()" hidden>Cancel editing</button>
-
 <p id="invoiceMessage" role="status"></p>
 </section>
 
 <section class="card">
 <h2 id="productTitle">Products</h2>
-
 <form id="productForm">
 <label for="pcode">Product code</label>
 <input id="pcode" placeholder="Product code" required>
-
 <label for="pack">Pairs per carton</label>
 <input id="pack" type="number" min="1" step="1" placeholder="Pairs per carton" required>
-
 <label for="price">Standard price per pair (R)</label>
 <input id="price" type="number" min="0" step="0.01" placeholder="Price per pair (R)" required>
-
 <button id="addProduct">Add product</button>
 </form>
-
 <div id="products"></div>
 </section>
 
 <section class="card">
 <h2 id="customerTitle">Customers</h2>
-
 <form id="customerForm">
 <label for="cname">Customer name</label>
 <input id="cname" placeholder="Customer name" required>
-
 <label for="phone">Phone number</label>
 <input id="phone" placeholder="Phone number">
-
 <label for="address">Address</label>
 <input id="address" placeholder="Address">
-
 <label for="opening">Opening balance (R)</label>
 <input id="opening" type="number" step="0.01" placeholder="Opening balance (R)" value="0" required>
-
 <button id="addCustomer">Add customer</button>
 </form>
-
 <div id="customers"></div>
 </section>
 
 <section class="card">
 <h2 id="priceTitle">Customer-specific prices</h2>
-
 <label for="customerSelect">Customer</label>
 <select id="customerSelect"></select>
-
 <label for="productSelect">Product code</label>
 <select id="productSelect"></select>
-
 <label for="specialPrice">Customer price per pair (R)</label>
 <input id="specialPrice" type="number" min="0" step="0.01" placeholder="Customer price per pair (R)">
-
 <button type="button" id="savePrice">Save customer price</button>
-
 <div id="priceList"></div>
 </section>
 
 <section class="card">
 <h2>Saved invoices</h2>
-
 <label for="searchInvoice">Search invoice number or customer</label>
 <input id="searchInvoice" type="search" placeholder="e.g. INV-000001 or customer name">
-
 <label for="searchStart">From date</label>
 <input id="searchStart" type="date">
-
 <label for="searchEnd">To date</label>
 <input id="searchEnd" type="date">
-
 <button type="button" class="secondary" onclick="clearInvoiceSearch()">Clear search</button>
-
 <p id="searchResultCount" aria-live="polite"></p>
 <div id="savedInvoices"><small>No invoices saved yet.</small></div>
 </section>
 
 <section class="card">
 <h2>Invoice details and audit history</h2>
-<div id="invoiceDetail">
-<small>Select View invoice from the saved invoice list.</small>
-</div>
+<div id="invoiceDetail"><small>Select View invoice from the saved invoice list.</small></div>
 </section>
 
 <section class="card">
 <h2>Data backup</h2>
 <button class="secondary" type="button" onclick="exportBackup()">Download backup</button>
-<small>Records are stored in this browser. Back up regularly. Clearing browser data may erase them. Invoice audit history is included in the backup.</small>
+<small>Records are stored in this browser. Back up regularly. Clearing browser data may erase them. Invoice history is included in the backup.</small>
 </section>
 </main>
 
@@ -216,10 +180,6 @@ function getInvoice(number){
   return invoices.find(inv=>String(inv.number)===String(number));
 }
 
-/*
- * Audit snapshots intentionally exclude the audit history itself.
- * This prevents audit records from repeatedly containing older audit records.
- */
 function invoiceSnapshot(inv){
   return {
     number:inv.number,
@@ -233,12 +193,8 @@ function invoiceSnapshot(inv){
 
 function formatTimestamp(timestamp){
   if(!timestamp)return 'Unknown time';
-
-  const date=new Date(timestamp);
-
-  if(Number.isNaN(date.getTime()))return String(timestamp);
-
-  return date.toLocaleString();
+  const d=new Date(timestamp);
+  return Number.isNaN(d.getTime())?String(timestamp):d.toLocaleString();
 }
 
 function draw(){
@@ -268,10 +224,7 @@ function draw(){
 
   $('priceList').innerHTML=prices.map(x=>{
     const c=customers.find(c=>String(c.id)===String(x.customerId));
-
-    return c
-      ?`<div class="item">${esc(c.name)} · Product ${esc(x.code)}: ${money(x.price)}/pair</div>`
-      :'';
+    return c?`<div class="item">${esc(c.name)} · Product ${esc(x.code)}: ${money(x.price)}/pair</div>`:'';
   }).join('');
 
   refreshInvoiceChoices();
@@ -282,17 +235,11 @@ function refreshInvoiceChoices(){
   const oldCustomer=$('invoiceCustomer').value;
   const oldProduct=$('invoiceProduct').value;
 
-  $('invoiceCustomer').innerHTML=
-    '<option value="">Select customer</option>'+
-    customers.map(c=>
-      `<option value="${esc(c.id)}">${esc(c.name)}</option>`
-    ).join('');
+  $('invoiceCustomer').innerHTML='<option value="">Select customer</option>'+
+    customers.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
 
-  $('invoiceProduct').innerHTML=
-    '<option value="">Select product</option>'+
-    products.map(p=>
-      `<option value="${esc(p.code)}">${esc(p.code)}</option>`
-    ).join('');
+  $('invoiceProduct').innerHTML='<option value="">Select product</option>'+
+    products.map(p=>`<option value="${esc(p.code)}">${esc(p.code)}</option>`).join('');
 
   if(customers.some(c=>String(c.id)===String(oldCustomer))){
     $('invoiceCustomer').value=oldCustomer;
@@ -302,13 +249,10 @@ function refreshInvoiceChoices(){
     $('invoiceProduct').value=oldProduct;
   }
 
-  if(!editingInvoiceNumber){
-    updateInvoicePrice();
-  }
+  if(!editingInvoiceNumber)updateInvoicePrice();
 
   if(!$('invoiceDate').value){
     const d=new Date();
-
     $('invoiceDate').value=[
       d.getFullYear(),
       String(d.getMonth()+1).padStart(2,'0'),
@@ -327,28 +271,22 @@ function updateInvoicePrice(){
   }
 
   const product=products.find(p=>p.code===code);
-
   if(!product)return;
 
   const special=prices.find(x=>
-    String(x.customerId)===String(customerId)&&
-    String(x.code)===String(code)
+    String(x.customerId)===String(customerId)&&String(x.code)===String(code)
   );
 
   $('invoicePrice').value=special?special.price:product.price;
 }
 
 $('invoiceCustomer').addEventListener('change',()=>{
-  if(!editingInvoiceNumber){
-    updateInvoicePrice();
-  }
+  if(!editingInvoiceNumber)updateInvoicePrice();
 });
-
 $('invoiceProduct').addEventListener('change',updateInvoicePrice);
 
 $('productForm').onsubmit=e=>{
   e.preventDefault();
-
   const code=$('pcode').value.trim();
 
   if(products.some(p=>p.code===code)){
@@ -359,7 +297,7 @@ $('productForm').onsubmit=e=>{
   const pack=Number($('pack').value);
   const price=Number($('price').value);
 
-  if(pack<1||!Number.isInteger(pack)||price<0){
+  if(pack<1||!Number.isInteger(pack)||!Number.isFinite(price)||price<0){
     alert('Enter a valid carton size and price.');
     return;
   }
@@ -416,17 +354,12 @@ $('savePrice').onclick=()=>{
   }
 
   const oldPrices=deepCopy(prices);
-
   const found=prices.find(x=>
-    String(x.customerId)===String(customerId)&&
-    String(x.code)===String(code)
+    String(x.customerId)===String(customerId)&&String(x.code)===String(code)
   );
 
-  if(found){
-    found.price=price;
-  }else{
-    prices.push({customerId,code,price});
-  }
+  if(found)found.price=price;
+  else prices.push({customerId,code,price});
 
   try{
     save('mai2_prices',prices);
@@ -441,18 +374,17 @@ $('savePrice').onclick=()=>{
 };
 
 function deleteProduct(i){
-  if(confirm('Delete this product?')){
-    const oldProducts=deepCopy(products);
+  if(!confirm('Delete this product?'))return;
 
-    products.splice(i,1);
+  const oldProducts=deepCopy(products);
+  products.splice(i,1);
 
-    try{
-      save('mai2_products',products);
-      draw();
-    }catch(err){
-      products=oldProducts;
-      alert('Could not delete the product. Browser storage may be full.');
-    }
+  try{
+    save('mai2_products',products);
+    draw();
+  }catch(err){
+    products=oldProducts;
+    alert('Could not delete the product. Browser storage may be full.');
   }
 }
 
@@ -477,6 +409,7 @@ function deleteCustomer(i){
   }
 }
 
+/* Add a product to a new invoice or to an invoice being edited. */
 $('addInvoiceItem').onclick=()=>{
   const code=$('invoiceProduct').value;
   const qty=Number($('invoiceQty').value);
@@ -502,19 +435,65 @@ $('addInvoiceItem').onclick=()=>{
   invoiceDrawItems();
 };
 
+/*
+ * Each invoice item now has editable carton size, carton quantity,
+ * and price fields. Press Update item to apply those values.
+ */
 function invoiceDrawItems(){
   $('invoiceItems').innerHTML=invoiceItems.map((x,i)=>
     `<div class="item">
-      <b>${esc(x.code)}</b><br>
-      ${x.cartons} cartons × ${x.pack} pairs/carton<br>
-      ${x.totalPairs} pairs × ${money(x.pricePerPair)} per pair<br>
-      <b>${money(x.total)}</b>
-      <button type="button" class="secondary" onclick="removeInvoiceItem(${i})">Remove</button>
+      <b>Product ${esc(x.code)}</b>
+
+      <label for="editPack${i}">Pairs per carton</label>
+      <input type="number" min="1" step="1" id="editPack${i}" value="${Number(x.pack)}">
+
+      <label for="editCartons${i}">Number of cartons</label>
+      <input type="number" min="1" step="1" id="editCartons${i}" value="${Number(x.cartons)}">
+
+      <label for="editPrice${i}">Price per pair (R)</label>
+      <input type="number" min="0" step="0.01" id="editPrice${i}" value="${Number(x.pricePerPair)}">
+
+      <p>Total pairs: ${Number(x.totalPairs)}</p>
+      <p>Line total: <b>${money(x.total)}</b></p>
+
+      <button type="button" onclick="updateInvoiceItem(${i})">Update item</button>
+      <button type="button" class="secondary" onclick="removeInvoiceItem(${i})">Remove item</button>
     </div>`
   ).join('')||'<p>No products added yet.</p>';
 
-  $('invoiceTotal').textContent=
-    money(invoiceItems.reduce((s,x)=>s+Number(x.total||0),0));
+  $('invoiceTotal').textContent=money(
+    invoiceItems.reduce((s,x)=>s+Number(x.total||0),0)
+  );
+}
+
+function updateInvoiceItem(i){
+  if(!invoiceItems[i])return;
+
+  const packRaw=$('editPack'+i).value;
+  const cartonsRaw=$('editCartons'+i).value;
+  const priceRaw=$('editPrice'+i).value;
+
+  const pack=Number(packRaw);
+  const cartons=Number(cartonsRaw);
+  const price=Number(priceRaw);
+
+  if(packRaw===''||!Number.isInteger(pack)||pack<1||
+     cartonsRaw===''||!Number.isInteger(cartons)||cartons<1||
+     priceRaw===''||!Number.isFinite(price)||price<0){
+    alert('Enter a valid pairs-per-carton value, carton quantity and price.');
+    return;
+  }
+
+  invoiceItems[i].pack=pack;
+  invoiceItems[i].cartons=cartons;
+  invoiceItems[i].pricePerPair=price;
+  invoiceItems[i].totalPairs=pack*cartons;
+  invoiceItems[i].total=pack*cartons*price;
+
+  invoiceDrawItems();
+
+  $('invoiceMessage').textContent=
+    'Item updated. Press Save changes to save the invoice.';
 }
 
 function removeInvoiceItem(i){
@@ -537,7 +516,6 @@ function resetInvoiceForm(){
   $('invoicePrice').value='';
 
   const d=new Date();
-
   $('invoiceDate').value=[
     d.getFullYear(),
     String(d.getMonth()+1).padStart(2,'0'),
@@ -556,11 +534,11 @@ function editInvoice(number){
     return;
   }
 
-  if(editingInvoiceNumber&&editingInvoiceNumber!==number){
+  if(editingInvoiceNumber){
     if(!confirm('Discard the unsaved changes to the invoice currently being edited?')){
       return;
     }
-  }else if(!editingInvoiceNumber&&invoiceItems.length>0){
+  }else if(invoiceItems.length>0){
     if(!confirm('Discard the products in the new invoice and edit this saved invoice?')){
       return;
     }
@@ -638,10 +616,9 @@ $('saveInvoice').onclick=()=>{
 
   if(editingInvoiceNumber){
     saveInvoiceChanges(customer,date);
-    return;
+  }else{
+    createNewInvoice(customer,date);
   }
-
-  createNewInvoice(customer,date);
 };
 
 function createNewInvoice(customer,date){
@@ -649,7 +626,7 @@ function createNewInvoice(customer,date){
   const number='INV-'+String(next).padStart(6,'0');
 
   if(getInvoice(number)){
-    alert('Invoice number '+number+' already exists. Please contact support before creating another invoice.');
+    alert('Invoice number '+number+' already exists. No new invoice was saved.');
     return;
   }
 
@@ -688,18 +665,15 @@ function createNewInvoice(customer,date){
     return;
   }
 
-  $('invoiceMessage').textContent=
-    'Invoice '+number+' saved. Total: '+money(invoice.total);
+  const savedNumber=number;
+  const savedTotal=invoice.total;
 
-  $('invoiceNumber').textContent=number;
-
-  invoiceItems=[];
-  invoiceDrawItems();
-  drawSavedInvoices();
-  viewInvoice(number);
   resetInvoiceForm();
+  drawSavedInvoices();
+  viewInvoice(savedNumber);
+
   $('invoiceMessage').textContent=
-    'Invoice '+number+' saved. Total: '+money(invoice.total);
+    'Invoice '+savedNumber+' saved. Total: '+money(savedTotal);
 }
 
 function saveInvoiceChanges(customer,date){
@@ -714,7 +688,6 @@ function saveInvoiceChanges(customer,date){
   }
 
   const original=deepCopy(invoices[index]);
-
   const before=invoiceSnapshot(original);
 
   const updated={
@@ -729,7 +702,6 @@ function saveInvoiceChanges(customer,date){
   };
 
   const after=invoiceSnapshot(updated);
-
   const changed=JSON.stringify(before)!==JSON.stringify(after);
 
   if(!changed){
@@ -756,7 +728,7 @@ function saveInvoiceChanges(customer,date){
       save('mai2_invoices',invoices);
     }catch(restoreError){}
 
-    alert('The changes could not be saved. Your browser storage may be full. The original invoice has been restored in memory.');
+    alert('The changes could not be saved. Browser storage may be full.');
     return;
   }
 
@@ -779,25 +751,16 @@ function drawSavedInvoices(){
   if(start&&end&&start>end){
     $('searchResultCount').textContent=
       'The start date must be before or equal to the end date.';
-
-    $('savedInvoices').innerHTML=
-      '<small>Please correct the date range.</small>';
-
+    $('savedInvoices').innerHTML='<small>Please correct the date range.</small>';
     return;
   }
 
   const filtered=invoices.filter(inv=>{
     const number=String(inv.number||'').toLowerCase();
     const name=String(inv.customer?.name||'').toLowerCase();
-
-    const matchesText=
-      !query||number.includes(query)||name.includes(query);
-
+    const matchesText=!query||number.includes(query)||name.includes(query);
     const date=String(inv.date||'');
-    const matchesStart=!start||date>=start;
-    const matchesEnd=!end||date<=end;
-
-    return matchesText&&matchesStart&&matchesEnd;
+    return matchesText&&(!start||date>=start)&&(!end||date<=end);
   });
 
   $('searchResultCount').textContent=
@@ -827,7 +790,6 @@ $('searchEnd').addEventListener('change',drawSavedInvoices);
 
 function viewInvoice(number){
   const inv=getInvoice(number);
-
   if(!inv)return;
 
   let html=`<h3>${esc(inv.number)}</h3>
@@ -850,15 +812,14 @@ function viewInvoice(number){
   });
 
   html+=`<p class="total">Invoice total: ${money(inv.total)}</p>`;
+  html+='<hr><h3>Audit history</h3>';
 
   const history=Array.isArray(inv.history)?inv.history:[];
 
-  html+='<hr><h3>Audit history</h3>';
-
   if(history.length===0){
-    html+='<p><small>No edits recorded. This invoice has not been edited since audit history was introduced.</small></p>';
+    html+='<p><small>No edits recorded. Older invoices may not have audit history.</small></p>';
   }else{
-    html+='<p><small>Each entry records the invoice before and after a saved change. Times are shown in your device’s local time.</small></p>';
+    html+='<p><small>Times are shown in your device’s local time.</small></p>';
 
     history.slice().reverse().forEach((entry,index)=>{
       const before=entry.before||{};
@@ -883,8 +844,7 @@ function viewInvoice(number){
         html+=`<div class="item">
           ${esc(item.code)} · ${Number(item.cartons||0)} cartons ·
           ${Number(item.totalPairs||0)} pairs ·
-          ${money(item.pricePerPair)}/pair ·
-          ${money(item.total)}
+          ${money(item.pricePerPair)}/pair · ${money(item.total)}
         </div>`;
       });
 
@@ -894,8 +854,7 @@ function viewInvoice(number){
         html+=`<div class="item">
           ${esc(item.code)} · ${Number(item.cartons||0)} cartons ·
           ${Number(item.totalPairs||0)} pairs ·
-          ${money(item.pricePerPair)}/pair ·
-          ${money(item.total)}
+          ${money(item.pricePerPair)}/pair · ${money(item.total)}
         </div>`;
       });
 
@@ -904,11 +863,7 @@ function viewInvoice(number){
   }
 
   $('invoiceDetail').innerHTML=html;
-
-  $('invoiceDetail').scrollIntoView({
-    behavior:'smooth',
-    block:'start'
-  });
+  $('invoiceDetail').scrollIntoView({behavior:'smooth',block:'start'});
 }
 
 function exportBackup(){
@@ -921,17 +876,12 @@ function exportBackup(){
     exportedAt:new Date().toISOString()
   };
 
-  const blob=new Blob(
-    [JSON.stringify(data,null,2)],
-    {type:'application/json'}
-  );
-
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
 
   a.href=url;
   a.download='mai-invoice-backup.json';
-
   document.body.appendChild(a);
   a.click();
   a.remove();
