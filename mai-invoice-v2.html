@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -35,6 +36,11 @@ label{display:block;margin-top:10px}
 .photo-row .row-grid{display:grid;grid-template-columns:1fr 110px;gap:8px;align-items:end}
 .photo-row .row-grid label{margin-top:4px}
 .photo-status{font-size:13px;color:#555}
+.import-table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+.import-table th,.import-table td{border:1px solid #ddd;padding:8px;text-align:left;overflow-wrap:anywhere}
+.import-table th{background:#e8eeeb}
+.import-ok{color:#176b37;font-weight:bold}
+.import-warn{color:#9a5a00;font-weight:bold}
 @media(max-width:480px){.photo-row .row-grid{grid-template-columns:1fr 90px}}
 </style>
 </head>
@@ -87,6 +93,17 @@ label{display:block;margin-top:10px}
 <p id="photoOcrStatus" class="photo-status" role="status">Choose a customer and upload a clear photo to begin.</p>
 <div id="photoOrderRows"></div>
 <button type="button" id="usePhotoOrder" hidden>Use reviewed items in invoice</button>
+</section>
+
+<section class="card" id="stockImportCard">
+<h2>Import Stock Codes from Excel</h2>
+<p>Upload the Mai Invoice Stock Code Import Template (.xlsx) or a CSV with the same three columns. Review the preview before importing. Existing product codes will be skipped and their prices will not be changed.</p>
+<label for="stockFile">Excel or CSV file</label>
+<input id="stockFile" type="file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv">
+<button type="button" id="previewStockImport">Preview stock codes</button>
+<p id="stockImportStatus" class="photo-status" role="status">Choose your completed stock-code template to begin.</p>
+<div id="stockImportPreview"></div>
+<button type="button" id="confirmStockImport" hidden>Import new products</button>
 </section>
 
 <section class="card">
@@ -157,6 +174,7 @@ label{display:block;margin-top:10px}
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const load=(key,def=[])=>{
@@ -902,6 +920,102 @@ $('usePhotoOrder').onclick=()=>{
   invoiceDrawItems();
   $('invoiceMessage').textContent='Photo order loaded for review. Check all items, then press Save invoice.';
   $('invoiceFormCard').scrollIntoView({behavior:'smooth',block:'start'});
+};
+
+/* Excel/CSV product catalogue import. Existing product records are never overwritten. */
+let stockImportRows=[];
+$('previewStockImport').onclick=async()=>{
+  const file=$('stockFile').files?.[0];
+  stockImportRows=[];
+  $('stockImportPreview').innerHTML='';
+  $('confirmStockImport').hidden=true;
+  if(!file){alert('Please choose your completed stock-code template first.');return;}
+  try{
+    $('previewStockImport').disabled=true;
+    $('stockImportStatus').textContent='Reading file…';
+    let rawRows=[];
+    const lower=file.name.toLowerCase();
+    if(lower.endsWith('.csv')){
+      const text=await file.text();
+      const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(line=>line.trim());
+      if(!lines.length)throw new Error('The file is empty.');
+      const parseCSVLine=line=>{
+        const out=[];let cur='',quoted=false;
+        for(let i=0;i<line.length;i++){
+          const ch=line[i];
+          if(ch==='"'&&quoted&&line[i+1]==='"'){cur+='"';i++;}
+          else if(ch==='"')quoted=!quoted;
+          else if(ch===','&&!quoted){out.push(cur);cur='';}
+          else cur+=ch;
+        }
+        out.push(cur);return out;
+      };
+      const heads=parseCSVLine(lines[0]).map(x=>x.trim());
+      rawRows=lines.slice(1).map(line=>{
+        const vals=parseCSVLine(line),obj={};heads.forEach((h,i)=>obj[h]=vals[i]??'');return obj;
+      });
+    }else{
+      if(!window.XLSX)throw new Error('Excel reader did not load. Connect to the internet, refresh the app, and try again.');
+      const buffer=await file.arrayBuffer();
+      const book=XLSX.read(buffer,{type:'array',cellText:true,cellDates:false});
+      if(!book.SheetNames.length)throw new Error('No worksheet was found.');
+      const sheet=book.Sheets[book.SheetNames[0]];
+      rawRows=XLSX.utils.sheet_to_json(sheet,{defval:'',raw:false});
+    }
+    if(!rawRows.length)throw new Error('No product rows found. Check that the first row contains the column headings.');
+    const normalizeHeader=x=>String(x??'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    const keys=Object.keys(rawRows[0]||{});
+    const findHeader=tests=>keys.find(k=>tests.includes(normalizeHeader(k)));
+    const codeKey=findHeader(['productcode','stockcode','code','product','stockcodeproductcode']);
+    const packKey=findHeader(['pairspercarton','pairsperbox','pack','packsize','cartonpack','pairsincarton']);
+    const priceKey=findHeader(['priceperpair','standardpriceperpair','price','unitprice','sellingpriceperpair']);
+    if(!codeKey||!packKey||!priceKey){
+      throw new Error('Could not find all required headings. Use exactly: Product code, Pairs per carton, Price per pair.');
+    }
+    const seen=new Set();
+    stockImportRows=rawRows.map((r,index)=>{
+      const code=String(r[codeKey]??'').trim();
+      const packRaw=String(r[packKey]??'').trim();
+      const priceRaw=String(r[priceKey]??'').trim().replace(/^R\s*/i,'').replace(/,/g,'');
+      if(!code&&!packRaw&&!priceRaw)return null;
+      const pack=Number(packRaw),price=Number(priceRaw);
+      let issue='Ready to import';
+      if(!code||!packRaw||!priceRaw)issue='Missing required value';
+      else if(!Number.isInteger(pack)||pack<1)issue='Pairs per carton must be a whole number ≥ 1';
+      else if(!Number.isFinite(price)||price<0)issue='Price per pair must be 0 or more';
+      else if(products.some(p=>String(p.code).trim().toLowerCase()===code.toLowerCase()))issue='Already exists — will skip';
+      else if(seen.has(code.toLowerCase()))issue='Duplicate in file — will skip';
+      if(code)seen.add(code.toLowerCase());
+      return {code,pack,price,issue,valid:issue==='Ready to import'};
+    }).filter(Boolean);
+    if(!stockImportRows.length)throw new Error('No product rows with data were found. Remove blank/example rows or fill in the template.');
+    const validCount=stockImportRows.filter(x=>x.valid).length;
+    const skipped=stockImportRows.length-validCount;
+    $('stockImportStatus').textContent=`Preview: ${stockImportRows.length} row(s), ${validCount} new product(s) ready, ${skipped} row(s) needing correction or skipped. Check the example rows in the template and remove them if they are not real products.`;
+    $('stockImportPreview').innerHTML=`<div style="overflow-x:auto"><table class="import-table"><thead><tr><th>Product code</th><th>Pairs/carton</th><th>Price/pair</th><th>Status</th></tr></thead><tbody>${stockImportRows.map(x=>`<tr><td>${esc(x.code||'(blank)')}</td><td>${x.pack||''}</td><td>${x.price===undefined?'':money(x.price)}</td><td class="${x.valid?'import-ok':'import-warn'}">${esc(x.issue)}</td></tr>`).join('')}</tbody></table></div>`;
+    $('confirmStockImport').hidden=validCount===0;
+    $('confirmStockImport').textContent=`Import ${validCount} new product(s)`;
+  }catch(err){
+    $('stockImportStatus').textContent=err.message||'Could not read this file.';
+    $('stockImportPreview').innerHTML='';
+    $('confirmStockImport').hidden=true;
+  }finally{$('previewStockImport').disabled=false;}
+};
+$('confirmStockImport').onclick=()=>{
+  const valid=stockImportRows.filter(x=>x.valid);
+  if(!valid.length){alert('There are no new valid products to import.');return;}
+  const old=deepCopy(products);
+  const added=[];
+  valid.forEach(x=>{
+    if(products.some(p=>String(p.code).trim().toLowerCase()===x.code.toLowerCase()))return;
+    products.push({code:x.code,pack:x.pack,price:x.price});added.push(x.code);
+  });
+  try{save('mai2_products',products);}
+  catch(err){products=old;alert('Could not save imported products. Your existing catalogue was restored.');return;}
+  draw();
+  stockImportRows=[];
+  $('stockFile').value='';$('stockImportPreview').innerHTML='';$('confirmStockImport').hidden=true;
+  $('stockImportStatus').textContent=`Import complete: ${added.length} new product(s) added. Existing products and prices were not changed.`;
 };
 
 function exportBackup(){
