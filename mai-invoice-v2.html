@@ -91,6 +91,7 @@ function deleteCustomer(i){if(confirm('Delete this customer?')){let id=customers
 function exportBackup(){let data={products,customers,prices,exportedAt:new Date().toISOString()};let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.download='mai-invoice-backup.json';a.click();URL.revokeObjectURL(a.href)}
 function renderLanguage(){let zh=$('language').value==='zh';$('productTitle').textContent=zh?'产品管理':'Products';$('customerTitle').textContent=zh?'客户管理':'Customers';$('priceTitle').textContent=zh?'客户专属价格':'Customer-specific prices';$('addProduct').textContent=zh?'添加产品':'Add product';$('addCustomer').textContent=zh?'添加客户':'Add customer';$('savePrice').textContent=zh?'保存客户价格':'Save customer price';}
 draw();
+ 
 </script>
 </body>
 </html>
