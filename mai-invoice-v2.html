@@ -339,6 +339,10 @@ function draw(){
     <button type="button" onclick="recordCustomerPayment('${esc(c.id)}')">Record payment</button>
     <button type="button" class="secondary" onclick="editCustomerBalance('${esc(c.id)}')">Edit opening balance</button>
     <button type="button" class="secondary" onclick="viewCustomerInvoices('${esc(c.id)}')">View linked invoices (${invoices.filter(inv=>String(inv.customer?.id)===String(c.id)).length})</button>
+    <button type="button" class="secondary" onclick="printCustomerStatement('${esc(c.id)}','en')">Print statement — English</button>
+    <button type="button" class="secondary" onclick="printCustomerStatement('${esc(c.id)}','zh')">打印对账单 — 中文</button>
+    <button type="button" class="secondary" onclick="exportCustomerStatement('${esc(c.id)}','en')">Export statement — English</button>
+    <button type="button" class="secondary" onclick="exportCustomerStatement('${esc(c.id)}','zh')">导出对账单 — 中文</button>
     <details><summary>Payment history (${customerPayments.length})</summary>${customerPayments.slice().reverse().map(p=>`<p>${esc(p.date)} · ${money(p.amount)}${p.reference?' · '+esc(p.reference):''}</p>`).join('')||'<small>No payments recorded.</small>'}</details>
     <button class="danger" type="button" onclick="deleteCustomerById('${esc(c.id)}')">Delete customer</button></div>`;
   }).join('')||(customers.length?'<small>No customers match your search.</small>':'<small>No customers yet.</small>');
@@ -492,6 +496,37 @@ function viewCustomerInvoices(customerId){
     <button type="button" class="danger" onclick="deleteInvoice('${esc(inv.number)}');viewCustomerInvoices('${esc(customerId)}')">Delete invoice</button></div>`).join('')||'<small>No linked invoices.</small>');
   panel.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
+function customerStatementData(customerId){
+  const customer=customers.find(c=>String(c.id)===String(customerId));
+  if(!customer)return null;
+  const rows=[];
+  let running=Number(customer.opening||0);
+  rows.push({date:'',type:'Opening balance',reference:'',debit:running>0?running:0,credit:running<0?Math.abs(running):0,balance:running});
+  const linked=invoices.filter(inv=>String(inv.customer?.id)===String(customerId)).map(inv=>({date:inv.date||'',type:'Invoice',reference:inv.number||'',debit:Number(inv.total||0),credit:0,stamp:inv.createdAt||''}));
+  const paid=payments.filter(p=>String(p.customerId)===String(customerId)).map(p=>({date:p.date||'',type:'Payment',reference:p.reference||'',debit:0,credit:Number(p.amount||0),stamp:p.createdAt||''}));
+  [...linked,...paid].sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.stamp).localeCompare(String(b.stamp))).forEach(r=>{running+=r.debit-r.credit;rows.push({...r,balance:running});});
+  return {customer,rows,balance:customerBalance(customer)};
+}
+function printCustomerStatement(customerId,language='en'){
+  const data=customerStatementData(customerId);if(!data)return;
+  const zh=language==='zh';
+  const t=zh?{title:'客户对账单',name:'客户',phone:'电话',address:'地址',date:'日期',type:'类型',ref:'单据编号/备注',debit:'借方（R）',credit:'贷方（R）',balance:'余额（R）',opening:'期初余额',invoice:'发票',payment:'收款',total:'当前未结余额'}:{title:'Customer Statement',name:'Customer',phone:'Phone',address:'Address',date:'Date',type:'Type',ref:'Reference',debit:'Debit (R)',credit:'Credit (R)',balance:'Balance (R)',opening:'Opening balance',invoice:'Invoice',payment:'Payment',total:'Current outstanding balance'};
+  const escHtml=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const rows=data.rows.map((r,i)=>`<tr><td>${escHtml(r.date)}</td><td>${escHtml(r.type==='Opening balance'?t.opening:r.type==='Invoice'?t.invoice:t.payment)}</td><td>${escHtml(r.reference)}</td><td class="num">${Number(r.debit||0).toFixed(2)}</td><td class="num">${Number(r.credit||0).toFixed(2)}</td><td class="num">${Number(r.balance||0).toFixed(2)}</td></tr>`).join('');
+  const w=window.open('','_blank');if(!w){alert('Allow pop-ups for this website and try again.');return;}
+  w.document.open();w.document.write(`<!doctype html><html lang="${zh?'zh-CN':'en'}"><head><meta charset="utf-8"><title>${t.title}</title><style>body{font:12px Arial,sans-serif;color:#111;margin:20mm}h1{font-size:22px}p{margin:6px 0}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border-bottom:1px solid #aaa;padding:7px 5px;text-align:left}th{background:#eee}.num{text-align:right}.total{font-size:16px;font-weight:bold;margin-top:20px}@page{size:A4 portrait;margin:12mm}</style></head><body><h1>${t.title}</h1><p><b>${t.name}:</b> ${escHtml(data.customer.name)}</p><p><b>${t.phone}:</b> ${escHtml(data.customer.phone||'')}</p><p><b>${t.address}:</b> ${escHtml(data.customer.address||'')}</p><table><thead><tr><th>${t.date}</th><th>${t.type}</th><th>${t.ref}</th><th>${t.debit}</th><th>${t.credit}</th><th>${t.balance}</th></tr></thead><tbody>${rows}</tbody></table><p class="total">${t.total}: R${Number(data.balance).toFixed(2)}</p></body></html>`);w.document.close();w.onload=()=>{w.focus();w.print();};
+}
+function exportCustomerStatement(customerId,language='en'){
+  const data=customerStatementData(customerId);if(!data)return;
+  const zh=language==='zh';
+  const rows=[];const cell=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const add=r=>rows.push(r.map(cell).join(','));
+  add([zh?'客户对账单':'Customer Statement']);add([zh?'客户':'Customer',data.customer.name]);add([zh?'电话':'Phone',data.customer.phone||'']);add([zh?'地址':'Address',data.customer.address||'']);add([]);
+  add(zh?['日期','类型','单据编号/备注','借方（R）','贷方（R）','余额（R）']:['Date','Type','Reference','Debit (R)','Credit (R)','Balance (R)']);
+  data.rows.forEach(r=>add([r.date,zh?(r.type==='Opening balance'?'期初余额':r.type==='Invoice'?'发票':'收款'):r.type,r.reference,Number(r.debit||0).toFixed(2),Number(r.credit||0).toFixed(2),Number(r.balance||0).toFixed(2)]));
+  add([]);add([zh?'当前未结余额（R）':'Current outstanding balance (R)',Number(data.balance).toFixed(2)]);
+  const blob=new Blob(['\uFEFF'+rows.join('\r\n')],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='customer-statement-'+String(data.customer.name||'customer').replace(/[^a-zA-Z0-9_-]/g,'_')+(zh?'-中文':'-English')+'.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
 function deleteCustomerById(customerId){
   const index=customers.findIndex(c=>String(c.id)===String(customerId));
   if(index<0)return;
